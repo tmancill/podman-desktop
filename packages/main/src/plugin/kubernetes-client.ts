@@ -17,34 +17,37 @@
  ***********************************************************************/
 
 import * as fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import type {
-  Context,
-  V1Pod,
-  V1ConfigMap,
-  V1PodList,
-  V1NamespaceList,
-  V1Service,
-  V1Ingress,
-  V1ContainerState,
-  V1APIResource,
-  V1APIGroup,
   Cluster,
-  V1Deployment,
+  Context,
   KubernetesObject,
+  V1APIGroup,
+  V1APIResource,
+  V1ConfigMap,
+  V1ContainerState,
+  V1Deployment,
+  V1Ingress,
+  V1NamespaceList,
+  V1Pod,
+  V1PodList,
+  V1Service,
+  V1ObjectMeta,
   ListPromise,
   KubernetesListObject,
 } from '@kubernetes/client-node';
 import {
   ApisApi,
-  NetworkingV1Api,
   AppsV1Api,
-  CustomObjectsApi,
   CoreV1Api,
+  CustomObjectsApi,
   KubeConfig,
   Log,
-  Watch,
-  VersionApi,
   makeInformer,
+  NetworkingV1Api,
+  V1DeleteOptions,
+  VersionApi,
+  Watch,
 } from '@kubernetes/client-node';
 import type { V1Route } from './api/openshift-types.js';
 import type * as containerDesktopAPI from '@podman-desktop/api';
@@ -52,7 +55,6 @@ import { Emitter } from './events/emitter.js';
 import { Uri } from './types/uri.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
 import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
 import type { FilesystemMonitoring } from './filesystem-monitoring.js';
 import type { PodInfo } from './api/pod-info.js';
@@ -129,6 +131,9 @@ export class KubernetesClient {
   private kubeWatcher: any | undefined;
 
   private apiGroups = new Array<V1APIGroup>();
+
+  // Pods that are in restarting state, keys are namespace, values are arrays of pod names
+  private restartingPods = new Map<string, Array<string>>();
 
   /*
    a Cache of API resources for the cluster. This is used to compute the plural when dealing
@@ -457,6 +462,10 @@ export class KubernetesClient {
   }
 
   async createPod(namespace: string, body: V1Pod): Promise<V1Pod> {
+    if (body.metadata?.name && this.isPodRestarting(namespace, body.metadata.name)) {
+      throw new Error(`Pod with name ${body.metadata.name} already created.`);
+    }
+
     let telemetryOptions = {};
     const k8sCoreApi = this.kubeConfig.makeApiClient(CoreV1Api);
 
@@ -663,6 +672,130 @@ export class KubernetesClient {
       throw this.wrapK8sClientError(error);
     } finally {
       this.telemetry.track('kubernetesDeletePod', telemetryOptions);
+    }
+  }
+
+  async restartPod(name: string, timeoutMs: number = 60000, pollInterval: number = 1000): Promise<void> {
+    let telemetryOptions = {};
+    try {
+      const ns = this.currentNamespace;
+      const connected = await this.checkConnection();
+      if (ns && connected) {
+        const pod = await this.readNamespacedPod(name, ns);
+        if (pod?.metadata) {
+          const coreApi = this.kubeConfig.makeApiClient(CoreV1Api);
+
+          pod.status = undefined;
+          pod.metadata = {
+            name: pod.metadata.name,
+            namespace: pod.metadata.namespace,
+            labels: pod.metadata.labels,
+            annotations: pod.metadata.annotations,
+          } as V1ObjectMeta;
+
+          this.markPodRestarting(this.currentNamespace || '', name);
+
+          // To restart pod we need to delete existed pod and create the new one
+          const deleteOptions = new V1DeleteOptions();
+          deleteOptions.propagationPolicy = 'Foreground';
+          await coreApi.deleteNamespacedPod(
+            name,
+            ns,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            deleteOptions,
+          );
+          // Wait the pod to be successfully deleted
+          await this.waitForPodDeletion(coreApi, name, ns, timeoutMs, pollInterval);
+          await coreApi.createNamespacedPod(ns, pod);
+        }
+      }
+    } catch (error) {
+      telemetryOptions = { error: error };
+      throw this.wrapK8sClientError(error);
+    } finally {
+      this.unmarkPodRestarting(this.currentNamespace || '', name);
+      this.telemetry.track('kubernetesRestartPod', telemetryOptions);
+    }
+  }
+
+  private async waitForPodDeletion(
+    coreApi: CoreV1Api,
+    name: string,
+    ns: string,
+    timeoutMs: number,
+    pollIntervalMs: number,
+  ) {
+    const startTime = Date.now();
+    const timeout = startTime + timeoutMs;
+
+    const checkPodStatus = async () => {
+      try {
+        const response = await coreApi.readNamespacedPodStatus(name, ns);
+        if (
+          response.body.status &&
+          (response.body.status.phase === 'Terminating' || response.body.status.phase === 'Running')
+        ) {
+          // Pod is still deleting
+          if (Date.now() < timeout) {
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+            await checkPodStatus();
+            return;
+          } else {
+            throw new Error('Request timed out while deleting the Pod.');
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (error: any) {
+        if (error.response && error.response.statusCode === 404) {
+          // Pod successfully deleted
+          return;
+        }
+        throw this.wrapK8sClientError(error);
+      }
+    };
+
+    await checkPodStatus();
+  }
+
+  private isPodRestarting(namespace: string, name: string) {
+    if (this.restartingPods.has(namespace)) {
+      const names = this.restartingPods.get(namespace);
+      if (names && names.includes(name)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private markPodRestarting(namespace: string, name: string) {
+    if (this.restartingPods.has(namespace)) {
+      const names = this.restartingPods.get(namespace);
+      if (names) {
+        names.push(name);
+      }
+    } else {
+      this.restartingPods.set(namespace, [name]);
+    }
+  }
+
+  private unmarkPodRestarting(namespace: string, name: string) {
+    if (this.restartingPods.has(namespace)) {
+      const names = this.restartingPods.get(namespace);
+      if (names) {
+        const index = names.indexOf(name);
+        if (index !== -1) {
+          names.splice(index, 1);
+        }
+
+        if (names.length === 0) {
+          this.restartingPods.delete(namespace);
+        }
+      }
     }
   }
 

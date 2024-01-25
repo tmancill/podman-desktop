@@ -120,6 +120,7 @@ beforeAll(() => {
       NetworkingV1Api: {},
       VersionApi: {},
       makeInformer: vi.fn(),
+      V1DeleteOptions: vi.fn(),
     };
   });
 });
@@ -1215,4 +1216,42 @@ test('Expect ingress refreshInformer should stop and start the informer again', 
   await client.refreshInformer(id);
   expect(stopInformerMock).toBeCalled();
   expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
+});
+
+test('Expect pod to be restarted', async () => {
+  const client = createTestClient('default');
+  client.readNamespacedPod = vi.fn().mockResolvedValue({ metadata: {} });
+  const deleteNamespacedPodMock = vi.fn();
+  const createNamespacedPodMock = vi.fn();
+
+  makeApiClientMock.mockReturnValue({
+    getCode: () => Promise.resolve({ body: { gitVersion: 'v1.20.0' } }),
+    deleteNamespacedPod: deleteNamespacedPodMock,
+    createNamespacedPod: createNamespacedPodMock,
+    // eslint-disable-next-line prefer-promise-reject-errors
+    readNamespacedPodStatus: () => Promise.reject({ response: { statusCode: 404 } }),
+  });
+
+  await client.restartPod('dummy');
+  expect(deleteNamespacedPodMock).toBeCalled();
+  expect(createNamespacedPodMock).toBeCalled();
+});
+
+test('Expect pod fails to restart', async () => {
+  const client = createTestClient('default');
+  client.readNamespacedPod = vi.fn().mockResolvedValue({ metadata: {} });
+  const deleteNamespacedPodMock = vi.fn();
+  const createNamespacedPodMock = vi.fn();
+
+  makeApiClientMock.mockReturnValue({
+    getCode: () => Promise.resolve({ body: { gitVersion: 'v1.20.0' } }),
+    deleteNamespacedPod: deleteNamespacedPodMock,
+    createNamespacedPod: createNamespacedPodMock,
+    // eslint-disable-next-line prefer-promise-reject-errors
+    readNamespacedPodStatus: () => Promise.resolve({ body: { status: { phase: 'Running' } } }),
+  });
+
+  await expect(client.restartPod('dummy', 0, 0)).rejects.toThrow(
+    new Error('Request timed out while deleting the Pod.'),
+  );
 });

@@ -1714,6 +1714,10 @@ function initExposure(): void {
     },
   );
 
+  contextBridge.exposeInMainWorld('restartKubernetesPod', async (name: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:restartPod', name);
+  });
+
   contextBridge.exposeInMainWorld(
     'openshiftCreateRoute',
     async (namespace: string, route: V1Route): Promise<V1Route> => {
