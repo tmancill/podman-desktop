@@ -7,7 +7,7 @@ import { runImageInfo } from '../../stores/run-image-store';
 import type { Menu } from '../../../../main/src/plugin/menu-registry';
 import ContributionActions from '/@/lib/actions/ContributionActions.svelte';
 import { ImageUtils } from './image-utils';
-import { onDestroy, onMount } from 'svelte';
+import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 import { MenuContext } from '../../../../main/src/plugin/menu-registry';
 import ActionsWrapper from './ActionsMenu.svelte';
 import type { Unsubscriber } from 'svelte/motion';
@@ -21,13 +21,14 @@ export let dropdownMenu = false;
 export let detailed = false;
 export let groupContributions = false;
 
-let isAuthenticatedForThisImage = false;
 const imageUtils = new ImageUtils();
 
 let contributions: Menu[] = [];
 let globalContext: ContextUI;
 let contextsUnsubscribe: Unsubscriber;
 let groupingContributions = false;
+
+const dispatch = createEventDispatcher<{ update: ImageInfoUI }>();
 
 onMount(async () => {
   contributions = await window.getContributedMenus(MenuContext.DASHBOARD_IMAGE);
@@ -57,9 +58,10 @@ async function runImage(imageInfo: ImageInfoUI) {
   router.goto('/images/run/basic');
 }
 
-$: window.hasAuthconfigForImage(image.name).then(result => (isAuthenticatedForThisImage = result));
-
 async function deleteImage(): Promise<void> {
+  image.status = 'DELETING';
+  dispatch('update', image);
+
   try {
     await imageUtils.deleteImage(image);
   } catch (error) {
@@ -92,10 +94,11 @@ function onError(error: string): void {
 
 <ListItemButtonIcon
   title="Delete Image"
+  confirm="{true}"
   onClick="{() => deleteImage()}"
   detailed="{detailed}"
   icon="{faTrash}"
-  enabled="{!image.inUse}" />
+  enabled="{image.status === 'UNUSED'}" />
 
 <!-- If dropdownMenu is true, use it, otherwise just show the regular buttons -->
 <ActionsWrapper
@@ -103,14 +106,12 @@ function onError(error: string): void {
   onBeforeToggle="{() => {
     globalContext?.setValue('selectedImageId', image.id);
   }}">
-  {#if isAuthenticatedForThisImage}
-    <ListItemButtonIcon
-      title="Push Image"
-      onClick="{() => pushImage(image)}"
-      menu="{dropdownMenu}"
-      detailed="{detailed}"
-      icon="{faArrowUp}" />
-  {/if}
+  <ListItemButtonIcon
+    title="Push Image"
+    onClick="{() => pushImage(image)}"
+    menu="{dropdownMenu}"
+    detailed="{detailed}"
+    icon="{faArrowUp}" />
 
   <ListItemButtonIcon
     title="Edit Image"

@@ -90,6 +90,7 @@ import type {
   Context as KubernetesContext,
   Cluster,
   V1Deployment,
+  KubernetesObject,
 } from '@kubernetes/client-node';
 import type { V1Route } from './api/openshift-types.js';
 import type { NetworkInspectInfo } from './api/network-info.js';
@@ -147,14 +148,20 @@ import { ImageCheckerImpl } from './image-checker.js';
 import type { ImageCheckerInfo } from './api/image-checker-info.js';
 import { AppearanceInit } from './appearance-init.js';
 import type { KubeContext } from './kubernetes-context.js';
+import { Troubleshooting } from './troubleshooting.js';
 import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
 import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
 import { OpenDevToolsInit } from './open-devtools-init.js';
 import { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
 import { WebviewRegistry } from './webview/webview-registry.js';
 import type { IDisposable } from './types/disposable.js';
-
 import { KubernetesUtils } from './kubernetes-util.js';
+import { downloadGuideList } from './learning-center/learning-center.js';
+import type { ColorInfo } from './api/color-info.js';
+import { ColorRegistry } from './color-registry.js';
+import { DialogRegistry } from './dialog-registry.js';
+import type { Deferred } from './util/deferred.js';
+import type { ContextState } from './kubernetes-context-state.js';
 
 type LogType = 'log' | 'warn' | 'trace' | 'debug' | 'error';
 
@@ -182,7 +189,10 @@ export class PluginSystem {
   private extensionLoader!: ExtensionLoader;
   private validExtList!: ExtensionInfo[];
 
-  constructor(private trayMenu: TrayMenu) {
+  constructor(
+    private trayMenu: TrayMenu,
+    private mainWindowDeferred: Deferred<BrowserWindow>,
+  ) {
     app.on('before-quit', () => {
       this.isQuitting = true;
     });
@@ -344,12 +354,12 @@ export class PluginSystem {
 
       // if url is a known domain, open it directly
       const urlObject = new URL(url);
-      const validDomains = ['podman-desktop.io', 'podman.io'];
+      const validDomains = ['podman-desktop.io', 'podman.io', 'localhost', '127.0.0.1'];
       const skipConfirmationUrl = validDomains.some(
         domain => urlObject.hostname.endsWith(domain) || urlObject.hostname === domain,
       );
 
-      if (skipConfirmationUrl) {
+      if (skipConfirmationUrl || urlObject.protocol === 'file:') {
         await shell.openExternal(url);
         return true;
       }
@@ -377,6 +387,8 @@ export class PluginSystem {
 
   // initialize extension loader mechanism
   async initExtensions(): Promise<ExtensionLoader> {
+    const notifications: NotificationCardOptions[] = [];
+
     this.isReady = false;
     this.uiReady = false;
     this.ipcHandle('extension-system:isReady', async (): Promise<boolean> => {
@@ -395,12 +407,13 @@ export class PluginSystem {
 
     const iconRegistry = new IconRegistry(apiSender);
     const directories = new Directories();
+    const statusBarRegistry = new StatusBarRegistry(apiSender);
 
-    const taskManager = new TaskManager(apiSender);
-    const notificationRegistry = new NotificationRegistry(apiSender, taskManager);
+    const configurationRegistry = new ConfigurationRegistry(apiSender, directories);
+    notifications.push(...configurationRegistry.init());
 
-    const configurationRegistry = new ConfigurationRegistry(apiSender, directories, notificationRegistry);
-    configurationRegistry.init();
+    const colorRegistry = new ColorRegistry(apiSender, configurationRegistry);
+    colorRegistry.init();
 
     const proxy = new Proxy(configurationRegistry);
     await proxy.init();
@@ -411,6 +424,10 @@ export class PluginSystem {
     const exec = new Exec(proxy);
 
     const commandRegistry = new CommandRegistry(apiSender, telemetry);
+    const taskManager = new TaskManager(apiSender, statusBarRegistry, commandRegistry);
+    taskManager.init();
+
+    const notificationRegistry = new NotificationRegistry(apiSender, taskManager);
     const menuRegistry = new MenuRegistry(commandRegistry);
     const kubeGeneratorRegistry = new KubeGeneratorRegistry();
     const certificates = new Certificates();
@@ -422,7 +439,6 @@ export class PluginSystem {
     const cancellationTokenRegistry = new CancellationTokenRegistry();
     const providerRegistry = new ProviderRegistry(apiSender, containerProviderRegistry, telemetry);
     const trayMenuRegistry = new TrayMenuRegistry(this.trayMenu, commandRegistry, providerRegistry, telemetry);
-    const statusBarRegistry = new StatusBarRegistry(apiSender);
     const inputQuickPickRegistry = new InputQuickPickRegistry(apiSender);
     const fileSystemMonitoring = new FilesystemMonitoring();
     const customPickRegistry = new CustomPickRegistry(apiSender);
@@ -445,6 +461,10 @@ export class PluginSystem {
       await trayIconColor.init();
     }
 
+    // Add all notifications to notification registry
+    notifications.forEach(notification => notificationRegistry.addNotification(notification));
+    notifications.length = 0;
+    Object.freeze(notifications);
     kubeGeneratorRegistry.registerDefaultKubeGenerator({
       name: 'PodmanKube',
       types: ['Compose', 'Container', 'Pod'],
@@ -479,18 +499,6 @@ export class PluginSystem {
     statusBarRegistry.setEntry('help', false, 0, undefined, 'Help', 'fa fa-question-circle', true, 'help', undefined);
 
     statusBarRegistry.setEntry(
-      'tasks',
-      false,
-      0,
-      undefined,
-      'Tasks',
-      'fa fa-bell',
-      true,
-      'show-task-manager',
-      undefined,
-    );
-
-    statusBarRegistry.setEntry(
       'troubleshooting',
       false,
       0,
@@ -501,10 +509,6 @@ export class PluginSystem {
       'troubleshooting',
       undefined,
     );
-
-    commandRegistry.registerCommand('show-task-manager', () => {
-      apiSender.send('toggle-task-manager', '');
-    });
 
     statusBarRegistry.setEntry(
       'feedback',
@@ -579,6 +583,7 @@ export class PluginSystem {
           true,
           'update',
           undefined,
+          true,
         );
       });
 
@@ -741,11 +746,22 @@ export class PluginSystem {
 
     const imageChecker = new ImageCheckerImpl(apiSender);
 
+    const troubleshooting = new Troubleshooting(apiSender);
+
     const contributionManager = new ContributionManager(apiSender, directories, containerProviderRegistry, exec);
 
-    const navigationManager = new NavigationManager(apiSender, containerProviderRegistry, contributionManager);
     const webviewRegistry = new WebviewRegistry(apiSender);
     await webviewRegistry.start();
+
+    const dialogRegistry = new DialogRegistry(this.mainWindowDeferred);
+    dialogRegistry.init();
+
+    const navigationManager = new NavigationManager(
+      apiSender,
+      containerProviderRegistry,
+      contributionManager,
+      webviewRegistry,
+    );
 
     // init kubernetes configuration
     const kubernetesUtils = new KubernetesUtils(configurationRegistry);
@@ -782,6 +798,8 @@ export class PluginSystem {
       imageChecker,
       navigationManager,
       webviewRegistry,
+      colorRegistry,
+      dialogRegistry,
     );
     await this.extensionLoader.init();
 
@@ -1236,11 +1254,13 @@ export class PluginSystem {
               data,
             );
           },
-          relativeContainerfilePath,
-          imageName,
-          platform,
-          selectedProvider,
-          abortController,
+          {
+            containerFile: relativeContainerfilePath,
+            tag: imageName,
+            platform,
+            provider: selectedProvider,
+            abortController,
+          },
         );
       },
     );
@@ -1280,6 +1300,24 @@ export class PluginSystem {
     this.ipcHandle('cli-tool-registry:getCliToolInfos', async (): Promise<CliToolInfo[]> => {
       return cliToolRegistry.getCliToolInfos();
     });
+
+    this.ipcHandle(
+      'troubleshooting:saveLogs',
+      async (
+        _listener,
+        consoleLogs: { logType: LogType; message: string }[],
+        destinaton: string,
+      ): Promise<string[]> => {
+        return troubleshooting.saveLogs(consoleLogs, destinaton);
+      },
+    );
+
+    this.ipcHandle(
+      'troubleshooting:generateLogFileName',
+      async (_listener, filename: string, prefix?: string): Promise<string> => {
+        return troubleshooting.generateLogFileName(filename, prefix);
+      },
+    );
 
     this.ipcHandle(
       'cli-tool-registry:updateCliTool',
@@ -1974,6 +2012,13 @@ export class PluginSystem {
     );
 
     this.ipcHandle(
+      'kubernetes-client:applyResourcesFromFile',
+      async (_listener, context: string, file: string): Promise<KubernetesObject[]> => {
+        return kubernetesClient.applyResourcesFromFile(context, file);
+      },
+    );
+
+    this.ipcHandle(
       'openshift-client:createRoute',
       async (_listener, namespace: string, route: V1Route): Promise<V1Route> => {
         return kubernetesClient.createOpenShiftRoute(namespace, route);
@@ -2040,6 +2085,10 @@ export class PluginSystem {
       return kubernetesClient.setContext(contextName);
     });
 
+    this.ipcHandle('kubernetes-client:getContextsState', async (): Promise<Map<string, ContextState>> => {
+      return kubernetesClient.getContextsState();
+    });
+
     this.ipcHandle('feedback:send', async (_listener, feedbackProperties: unknown): Promise<void> => {
       return telemetry.sendFeedback(feedbackProperties);
     });
@@ -2074,6 +2123,10 @@ export class PluginSystem {
 
     this.ipcHandle('iconRegistry:listIcons', async (): Promise<IconInfo[]> => {
       return iconRegistry.listIcons();
+    });
+
+    this.ipcHandle('colorRegistry:listColors', async (_listener, themeId: string): Promise<ColorInfo[]> => {
+      return colorRegistry.listColors(themeId);
     });
 
     this.ipcHandle('viewRegistry:listViewsContributions', async (_listener): Promise<ViewInfoUI[]> => {
@@ -2198,6 +2251,27 @@ export class PluginSystem {
     this.ipcHandle('webview:get-registry-http-port', async (): Promise<number> => {
       return webviewRegistry.getRegistryHttpPort();
     });
+
+    this.ipcHandle('learning-center:listGuides', async () => {
+      return downloadGuideList();
+    });
+
+    this.ipcHandle(
+      'dialog:openDialog',
+      async (_listener, dialogId: string, options: containerDesktopAPI.OpenDialogOptions): Promise<void> => {
+        dialogRegistry.openDialog(options, dialogId).catch((error: unknown) => {
+          console.error('Error opening dialog', error);
+        });
+      },
+    );
+    this.ipcHandle(
+      'dialog:saveDialog',
+      async (_listener, dialogId: string, options: containerDesktopAPI.SaveDialogOptions): Promise<void> => {
+        dialogRegistry.saveDialog(options, dialogId).catch((error: unknown) => {
+          console.error('Error opening dialog', error);
+        });
+      },
+    );
 
     const dockerDesktopInstallation = new DockerDesktopInstallation(
       apiSender,

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2022 Red Hat, Inc.
+ * Copyright (C) 2022-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import { CONFIGURATION_DEFAULT_SCOPE } from './configuration-registry-constants.
 import type { Directories } from './directories.js';
 import { Disposable } from './types/disposable.js';
 import type { ApiSenderType } from './api.js';
-import type { NotificationRegistry } from './notification-registry.js';
+import type { NotificationCardOptions } from './api/notification.js';
 
 export type IConfigurationPropertySchemaType =
   | 'markdown'
@@ -123,7 +123,6 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
   constructor(
     private apiSender: ApiSenderType,
     private directories: Directories,
-    private notificationRegistry: NotificationRegistry,
   ) {
     this.configurationProperties = {};
     this.configurationContributors = [];
@@ -136,7 +135,9 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
     return path.resolve(this.directories.getConfigurationDirectory(), 'settings.json');
   }
 
-  public init(): void {
+  public init(): NotificationCardOptions[] {
+    const notifications: NotificationCardOptions[] = [];
+
     const settingsFile = this.getSettingsFile();
     const parentDirectory = path.dirname(settingsFile);
     if (!fs.existsSync(parentDirectory)) {
@@ -157,8 +158,8 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
       // keep original file as a backup
       fs.cpSync(settingsFile, backupFilename);
 
-      // notify the user
-      this.notificationRegistry.addNotification({
+      // append notification for the user
+      notifications.push({
         title: 'Corrupted configuration file',
         body: `Configuration file located at ${settingsFile} was invalid. Created a copy at '${backupFilename}' and started with default settings.`,
         extensionId: 'core',
@@ -169,6 +170,7 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
       configData = {};
     }
     this.configurationValues.set(CONFIGURATION_DEFAULT_SCOPE, configData);
+    return notifications;
   }
 
   public registerConfigurations(configurations: IConfigurationNode[]): Disposable {
@@ -336,5 +338,35 @@ export class ConfigurationRegistry implements IConfigurationRegistry {
       }
     };
     return new ConfigurationImpl(this.apiSender, callback, this.configurationValues, section, scope);
+  }
+
+  addConfigurationEnum(key: string, values: string[], valueWhenRemoved: unknown): Disposable {
+    const property = this.configurationProperties[key];
+    if (property?.enum) {
+      property.enum?.push(...values);
+      this.apiSender.send('configuration-changed');
+    }
+    return Disposable.create(() => {
+      this.removeConfigurationEnum(key, values, valueWhenRemoved);
+    });
+  }
+
+  protected removeConfigurationEnum(key: string, values: string[], valueWhenRemoved: unknown): void {
+    const property = this.configurationProperties[key];
+    if (property) {
+      // remove the values from the enum
+      property.enum = property.enum?.filter(e => !values.includes(e));
+
+      // if the current value is the enum being removed, need to switch back to the previous element
+      // current scope
+      const currentValue = this.configurationValues.get(CONFIGURATION_DEFAULT_SCOPE)[key];
+
+      if (values.some(val => val === currentValue)) {
+        this.updateConfigurationValue(key, valueWhenRemoved).catch((e: unknown) =>
+          console.error(`unable to update default value for the property ${key}`, e),
+        );
+      }
+      this.apiSender.send('configuration-changed');
+    }
   }
 }

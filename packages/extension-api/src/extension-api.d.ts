@@ -18,6 +18,11 @@
 
 declare module '@podman-desktop/api' {
   /**
+   * The version of Podman Desktop.
+   */
+  export const version: string;
+
+  /**
    * Represents a reference to a command. Provides a title which
    * will be used to represent a command in the UI and, optionally,
    * an array of arguments which will be passed to the command handler
@@ -270,6 +275,7 @@ declare module '@podman-desktop/api' {
   export interface PodCreateOptions {
     name: string;
     portmappings?: PodCreatePortOptions[];
+    labels?: { [key: string]: string };
     // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
     provider?: ProviderContainerConnectionInfo | ContainerProviderConnection;
   }
@@ -1467,6 +1473,68 @@ declare module '@podman-desktop/api' {
   }
 
   /**
+   * Options to configure the behaviour of a file open dialog.
+   */
+  export interface OpenDialogOptions {
+    /**
+     * The resource the dialog shows when opened.
+     */
+    defaultUri?: Uri;
+
+    /**
+     * A human-readable string for the open button.
+     */
+    openLabel?: string;
+
+    /**
+     * Contains which features the dialog should use. The following values are
+     * supported:
+     */
+    selectors?: Array<'openFile' | 'openDirectory' | 'multiSelections' | 'showHiddenFiles'>;
+
+    /**
+     * A set of file filters that are used by the dialog.
+     */
+    filters?: {
+      extensions: string[];
+      name: string;
+    }[];
+
+    /**
+     * Dialog title.
+     */
+    title?: string;
+  }
+
+  /**
+   * Options to configure the behaviour of a file save dialog.
+   */
+  export interface SaveDialogOptions {
+    /**
+     * The resource the dialog shows when opened.
+     */
+    defaultUri?: Uri;
+
+    /**
+     * A human-readable string for the save button.
+     */
+    saveLabel?: string;
+
+    /**
+     * A set of file filters that are used by the dialog.
+     */
+    filters?: {
+      extensions: string[];
+      name: string;
+    }[];
+
+    /**
+     * Dialog title.
+     */
+    title?: string;
+  }
+
+  /**
    * Event fired when a webview panel's view state changes.
    */
   export interface WebviewPanelOnDidChangeViewStateEvent {
@@ -1507,6 +1575,65 @@ declare module '@podman-desktop/api' {
      */
     export function showErrorMessage(message: string, ...items: string[]): Promise<string | undefined>;
 
+    /**
+     * Show progress in Podman Desktop. Progress is shown while running the given callback
+     * and while the promise it returned isn't resolved nor rejected. The location at which
+     * progress should show (and other details) is defined via the passed {@linkcode ProgressOptions}.
+     *
+     * @param options the options for the task's details
+     * @param task A callback returning a promise. Progress state can be reported with
+     * the provided {@link Progress}-object.
+     *
+     * To report discrete progress, use `increment` to indicate how much work has been completed. Each call with
+     * a `increment` value will be summed up and reflected as overall progress until 100% is reached (a value of
+     * e.g. `10` accounts for `10%` of work done).
+     * Note that currently only `ProgressLocation.Notification` is capable of showing discrete progress.
+     *
+     * To monitor if the operation has been cancelled by the user, use the provided {@linkcode CancellationToken}.
+     * Note that currently only `ProgressLocation.Notification` is supporting to show a cancel button to cancel the
+     * long-running operation.
+     *
+     * @return The promise the task-callback returned.
+     *
+     * @example
+     * Here is a simple example
+     * ```ts
+     * await window.withProgress({ location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *   async progress => {
+     *     progress.report({message: 'task1' });
+     *     await task1();
+     *     progress.report({increment: 50, message: 'task2' });
+     *     await task2();
+     *   },
+     * );
+     * ```
+     * @example
+     * The error is propagated if thrown inside the task callback.
+     * ```ts
+     * try {
+     *    await window.withProgress(
+     *        { location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *        async progress => {
+     *           throw new Error('error when running a task');
+     *        },
+     *      );
+     *  } catch (error) {
+     *     // do something with the error
+     *  }
+     * ```
+     *
+     * @example
+     * You can return a value from the task callback
+     * ```ts
+     * const result: number = await window.withProgress<number>(
+     *    { location: ProgressLocation.TASK_WIDGET, title: `Running task` },
+     *    async progress => {
+     *       // compute something
+     *       return 55;
+     *    },
+     * );
+     * ```
+     */
     export function withProgress<R>(
       options: ProgressOptions,
       task: (progress: Progress<{ message?: string; increment?: number }>, token: CancellationToken) => Promise<R>,
@@ -1539,6 +1666,24 @@ declare module '@podman-desktop/api' {
      * @return A promise that resolves to a string the user provided or to `undefined` in case of dismissal.
      */
     export function showInputBox(options?: InputBoxOptions, token?: CancellationToken): Promise<string | undefined>;
+
+    /**
+     * Shows a file open dialog to the user which allows to select a file
+     * for opening-purposes.
+     *
+     * @param options Options that control the dialog.
+     * @returns A promise that resolves to the selected resources or `undefined`.
+     */
+    export function showOpenDialog(options?: OpenDialogOptions): Promise<Uri[] | undefined>;
+
+    /**
+     * Shows a file save dialog to the user which allows to select a file
+     * for saving-purposes.
+     *
+     * @param options Options that control the dialog.
+     * @returns A promise that resolves to the selected resource or `undefined`.
+     */
+    export function showSaveDialog(options?: SaveDialogOptions): Promise<Uri | undefined>;
 
     /**
      * Shows a selection list allowing multiple selections.
@@ -1843,6 +1988,28 @@ declare module '@podman-desktop/api' {
     MacAddress: string;
   }
 
+  interface PodContainerInfo {
+    Id: string;
+    Names: string;
+    Status: string;
+  }
+
+  interface PodInfo {
+    engineId: string;
+    engineName: string;
+    kind: 'kubernetes' | 'podman';
+    Cgroup: string;
+    Containers: PodContainerInfo[];
+    Created: string;
+    Id: string;
+    InfraId: string;
+    Labels: { [key: string]: string };
+    Name: string;
+    Namespace: string;
+    Networks: string[];
+    Status: string;
+  }
+
   interface AuthConfig {
     username: string;
     password: string;
@@ -2113,12 +2280,16 @@ declare module '@podman-desktop/api' {
     Type?: string;
   }
 
+  /**
+   * Authentication credentials, used when pushing an image to a registry
+   */
   interface ContainerAuthInfo {
     username: string;
     password: string;
     serveraddress: string;
     email?: string;
   }
+
   interface PullEvent {
     stream?: string;
     id?: string;
@@ -2130,6 +2301,120 @@ declare module '@podman-desktop/api' {
     };
     error?: string;
     errorDetails?: { message?: string };
+  }
+
+  interface HealthConfig {
+    /**
+     * The test to perform. Possible values are:
+     *
+     * - ```[]``` inherit healthcheck from image or parent image
+     * - ```["NONE"]``` disable healthcheck
+     * - ```["CMD", args...]``` exec arguments directly
+     * - ```["CMD-SHELL", command]``` run command with system's default shell
+     */
+    Test?: string[];
+
+    /**
+     * The time to wait between checks in nanoseconds. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     */
+    Interval?: number;
+
+    /**
+     * The time to wait before considering the check to have hung. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     */
+    Timeout?: number;
+
+    /**
+     * Start period for the container to initialize before starting health-retries countdown in nanoseconds. It should
+     * be 0 or at least 1000000 (1 ms). 0 means inherit.
+     */
+    StartPeriod?: number;
+
+    /**
+     * The number of consecutive failures needed to consider a container as unhealthy. 0 means inherit.
+     */
+    Retries?: number;
+  }
+
+  interface EndpointIPAMConfig {
+    IPv4Address?: string;
+    IPv6Address?: string;
+    LinkLocalIPs?: string[];
+  }
+
+  interface EndpointSettings {
+    /**
+     * EndpointIPAMConfig represents an endpoint's IPAM configuration.
+     */
+    IPAMConfig?: EndpointIPAMConfig;
+
+    Links?: string[];
+
+    /**
+     * MAC address for the endpoint on this network. The network driver might ignore this parameter.
+     */
+    MacAddress?: string;
+
+    Aliases?: string[];
+
+    /**
+     * Unique ID of the network.
+     */
+    NetworkID?: string;
+
+    /**
+     * Unique ID for the service endpoint in a Sandbox.
+     */
+    EndpointID?: string;
+
+    /**
+     * Gateway address for this network.
+     */
+    Gateway?: string;
+
+    /**
+     * IPv4 address.
+     */
+    IPAddress?: string;
+
+    /**
+     * Mask length of the IPv4 address.
+     */
+    IPPrefixLen?: number;
+
+    /**
+     * IPv6 gateway address.
+     */
+    IPv6Gateway?: string;
+
+    /**
+     * Global IPv6 address.
+     */
+    GlobalIPv6Address?: string;
+
+    /**
+     * Mask length of the global IPv6 address.
+     */
+    GlobalIPv6PrefixLen?: number;
+
+    /**
+     * DriverOpts is a mapping of driver options and values. These options are passed directly to the driver and are driver specific.
+     */
+    DriverOpts?: { [key: string]: string };
+
+    /**
+     * List of all DNS names an endpoint has on a specific network. This list is based on the container name, network
+     * aliases, container short ID, and hostname.
+     *
+     * These DNS names are non-fully qualified but can contain several dots. You can get fully qualified DNS names by
+     * appending ```.<network-name>```. For instance, if container name is ```my.ctr``` and the network is named
+     * ```testnet```, ```DNSNames``` will contain ```my.ctr``` and the FQDN will be ```my.ctr.testnet```.
+     */
+    DNSNames?: string[];
+  }
+
+  interface NetworkingConfig {
+    EndpointsConfig?: { [key: string]: EndpointSettings };
   }
 
   export interface PodmanContainerCreateOptions {
@@ -2153,32 +2438,190 @@ declare module '@podman-desktop/api' {
   }
 
   export interface ContainerCreateOptions {
+    /**
+     * Assign the specified name to the container. Must match the regular expression`/?[a-zA-Z0-9][a-zA-Z0-9_.-]+`. If not speficied, the platform assigns a unique name to the container
+     */
     name?: string;
+
+    /**
+     *  Default: ""
+     *
+     * Platform in the format ```os[/arch[/variant]]``` used for image lookup.
+     *
+     * When specified, the daemon checks if the requested image is present in the local image cache with the given OS and Architecture, and otherwise returns a ```404``` status.
+     *
+     * If the option is not set, the host's native OS and Architecture are used to look up the image in the image cache. However, if no platform is passed and the given image does exist in the local image cache, but its OS or architecture does not match, the container is created with the available image, and a warning is added to the ```Warnings``` field in the response, for example;
+     *
+     * ```
+     * WARNING: The requested image's platform (linux/arm64/v8) does not
+     *          match the detected host platform (linux/amd64) and no
+     *          specific platform was requested
+     * ```
+     */
+    platform?: string;
+
+    /**
+     * The hostname to use for the container, as a valid RFC 1123 hostname
+     */
     Hostname?: string;
+
+    /**
+     * The domain name to use for the container.
+     */
+    Domainname?: string;
+
+    /**
+     * The user that commands are run as inside the container
+     */
     User?: string;
+
+    /**
+     * A list of environment variables to set inside the container in the form `["VAR=value", ...]`. A variable without `=` is removed from the environment, rather than to have an empty value
+     */
     Env?: string[];
 
-    // environment files to use
+    /**
+     * Environment files to use
+     * */
     EnvFiles?: string[];
+
+    /**
+     * User-defined key/value metadata
+     */
     Labels?: { [label: string]: string };
 
+    /**
+     * An object mapping ports to an empty object in the form: `{"<port>/<tcp|udp|sctp>": {}}`
+     */
     // eslint-disable-next-line @typescript-eslint/ban-types
     ExposedPorts?: { [port: string]: {} };
+
+    /**
+     * Container configuration that depends on the host we are running on
+     */
     HostConfig?: HostConfig;
+
+    /**
+     * The name (or reference) of the image to use when creating the container
+     */
     Image?: string;
+
+    /**
+     * Attach standard streams to a TTY, including stdin if it is not closed (default false)
+     */
     Tty?: boolean;
+
+    /**
+     * Command to run specified as an array of strings
+     */
     Cmd?: string[];
+
+    /**
+     * The entry point for the container as a string or an array of strings.
+     *
+     * If the array consists of exactly one empty string (`[""]`) then the entry point is reset to system default (i.e., the entry point used by docker when there is no ENTRYPOINT instruction in the Containerfile).
+     */
     Entrypoint?: string | string[];
+
+    /**
+     * Whether to attach to `stdin` (default false)
+     */
     AttachStdin?: boolean;
+
+    /**
+     * Whether to attach to `stdout`(default false)
+     */
     AttachStdout?: boolean;
+
+    /**
+     * Whether to attach to `stderr` (default false)
+     */
     AttachStderr?: boolean;
+
+    /**
+     * Whether to open `stdin` (default false)
+     */
     OpenStdin?: boolean;
+
+    /**
+     * Close `stdin` after one attached client disconnects (deafult false)
+     */
     StdinOnce?: boolean;
+
+    /**
+     * Run the container in the background
+     */
     Detach?: boolean;
+
+    /**
+     * Start the container immediately (default true)
+     */
     start?: boolean;
+
+    /**
+     * A test to perform to check that the container is healthy.
+     */
+    HealthCheck?: HealthConfig;
+
+    /**
+     *  Default: ```false```
+     *
+     * Command is already escaped (Windows only)
+     */
+    ArgsEscaped?: boolean;
+
+    /**
+     * An object mapping mount point paths inside the container to empty objects.
+     */
+    Volumes?: { [volume: string]: object };
+
+    /**
+     * The working directory for commands to run in.
+     */
+    WorkingDir?: string;
+
+    /**
+     * Disable networking for the container.
+     */
+    NetworkDisabled?: boolean;
+
+    /**
+     * MAC address of the container.
+     */
+    MacAddress?: string;
+
+    /**
+     * ```ONBUILD``` metadata that were defined in the image's ```Dockerfile```.
+     */
+    OnBuild?: string[];
+
+    /**
+     * Signal to stop a container as a string or unsigned integer.
+     */
+    StopSignal?: string;
+
+    /**
+     *  Default: ```10```
+     *
+     * Timeout to stop a container in seconds.
+     */
+    StopTimeout?: number;
+
+    /**
+     * Shell for when ```RUN```, ```CMD```, and ```ENTRYPOINT``` uses a shell.
+     */
+    Shell?: string[];
+
+    NetworkConfig?: NetworkingConfig;
   }
 
+  /**
+   * Information about the container created by calling the {@link containerEngine.createContainer} method
+   */
   export interface ContainerCreateResult {
+    /**
+     * a string uniquely identifying the created container, which can be used to execute other methods on the container ({@link containerEngine.deleteContainer}, {@link containerEngine.inspectContainer}, {@link containerEngine.startContainer}, {@link containerEngine.stopContainer}, {@link containerEngine.logsContainer})
+     */
     id: string;
   }
 
@@ -2189,16 +2632,157 @@ declare module '@podman-desktop/api' {
   }
 
   export interface BuildImageOptions {
-    // Specifies a Containerfile which contains instructions for building the image
+    /**
+     * Specifies a Containerfile which contains instructions for building the image
+     */
     containerFile?: string;
-    // Specifies the name which is assigned to the resulting image if the build process completes successfully.
+
+    /**
+     * Specifies the name which is assigned to the resulting image if the build process completes successfully
+     */
     tag?: string;
-    // Set the os/arch of the built image (and its base image, when using one) to the provided value instead of using the current operating system and architecture of the host
+
+    /**
+     * Set the os/arch of the built image (and its base image, when using one) to the provided value instead of using the current operating system and architecture of the host
+     */
     platform?: string;
-    // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
+
+    /**
+     * Set the provider to use, if not we will try select the first one available (sorted in favor of Podman)
+     */
     provider?: ProviderContainerConnectionInfo | containerDesktopAPI.ContainerProviderConnection;
-    // The abort controller for running the build image operation
+
+    /**
+     * The abort controller for running the build image operation
+     */
     abortController?: AbortController;
+
+    /**
+     * Extra hosts to add to /etc/hosts
+     */
+    extrahosts?: string;
+
+    /**
+     * A Git repository URI or HTTP/HTTPS context URI. If the URI points to a single text file, the file’s contents are
+     * placed into a file called Dockerfile and the image is built from that file. If the URI points to a tarball, the
+     * file is downloaded by the daemon and the contents therein used as the context for the build. If the URI points
+     * to a tarball and the dockerfile parameter is also specified, there must be a file with the corresponding path
+     * inside the tarball.
+     */
+    remote?: string;
+
+    /**
+     * Default: false
+     *
+     * Suppress verbose build output.
+     */
+    q?: boolean;
+
+    /**
+     *  JSON array of images used for build cache resolution.
+     */
+    cachefrom?: string;
+
+    /**
+     * Attempt to pull the image even if an older image exists locally.
+     */
+    pull?: string;
+
+    /**
+     * Default: true
+     *
+     * Remove intermediate containers after a successful build.
+     */
+    rm?: boolean;
+
+    /**
+     * Default: false
+     *
+     * Always remove intermediate containers, even upon failure.
+     */
+    forcerm?: boolean;
+
+    /**
+     * Set memory limit for build.
+     */
+    memory?: number;
+
+    /**
+     * Total memory (memory + swap). Set as -1 to disable swap.
+     */
+    memswap?: number;
+
+    /**
+     * CPU shares (relative weight).
+     */
+    cpushares?: number;
+
+    /**
+     * CPUs in which to allow execution (e.g., 0-3, 0,1).
+     */
+    cpusetcpus?: number;
+
+    /**
+     * The length of a CPU period in microseconds.
+     */
+    cpuperiod?: number;
+
+    /**
+     * Microseconds of CPU time that the container can get in a CPU period.
+     */
+    cpuquota?: number;
+
+    /**
+     * JSON map of string pairs for build-time variables. Users pass these values at build-time. Docker uses the
+     * buildargs as the environment context for commands run via the ```Dockerfile``` RUN instruction, or for variable
+     * expansion in other ```Dockerfilev``` instructions. This is not meant for passing secret values.
+     * For example, the build arg ```FOO=bar``` would become ```{"FOO":"bar"}``` in JSON. This would result in the query
+     * parameter ```buildargs={"FOO":"bar"}```. Note that ```{"FOO":"bar"}``` should be URI component encoded.
+     */
+    buildargs?: { [key: string]: string };
+
+    /**
+     * Size of ```/dev/shm``` in bytes. The size must be greater than 0. If omitted the system uses 64MB.
+     */
+    shmsize?: number;
+
+    /**
+     * Squash the resulting images layers into a single layer.
+     */
+    squash?: boolean;
+
+    /**
+     * Arbitrary key/value labels to set on the image, as a JSON map of string pairs.
+     */
+    labels?: { [key: string]: string };
+
+    /**
+     * Sets the networking mode for the run commands during build. Supported standard values are: ```bridge```,
+     * ```host```, ```none```, and ```container:<name|id>```. Any other value is taken as a custom network's name or ID
+     * to which this container should connect to.
+     */
+    networkmode?: string;
+
+    /**
+     * Default: ""
+     *
+     * Target build stage
+     */
+    target?: string;
+
+    /**
+     * Default: ""
+     *
+     * BuildKit output configuration
+     */
+    outputs?: string;
+
+    /**
+     * Default: false
+     *
+     * Do not use the cache when building the image.
+     */
+    nocache?: boolean;
   }
 
   export interface NetworkCreateOptions {
@@ -2263,31 +2847,124 @@ declare module '@podman-desktop/api' {
     Scope: string;
   }
 
+  /**
+   *  Module providing operations to execute on all container providers
+   */
   export namespace containerEngine {
+    /**
+     * Returns the list of containers across all container engines, in any state (running or not).
+     *
+     * @return A promise resolving to an array of containers information. This method returns a subset of the available information for containers. To get the complete description of a specific container, you can use the {@link containerEngine.inspectContainer} method.
+     */
     export function listContainers(): Promise<ContainerInfo[]>;
+
+    /**
+     * Get the complete low-level information about a specific container.
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @return A promise resolving to a structure containing the container information
+     */
     export function inspectContainer(engineId: string, id: string): Promise<ContainerInspectInfo>;
 
+    /**
+     * Create a new container on a specific container engine
+     *
+     * @param engineId the id of the engine on which to create the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param containerCreateOptions the details of the container to create
+     * @return A promise resolving to the information on the created container
+     */
     export function createContainer(
       engineId: string,
       containerCreateOptions: ContainerCreateOptions,
     ): Promise<ContainerCreateResult>;
+
+    /**
+     * Start an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
     export function startContainer(engineId: string, id: string): Promise<void>;
+
+    /**
+     * Get the streamed logs of a container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @param callback the function called when new logs are emitted or new events happen on the stream. The value of `name` can be either `data` (and `data` contains the logs), or `end` indicating the end of the stream, or `first-message` indicating no data has been emitted yet on the stream.
+     */
     export function logsContainer(
       engineId: string,
       id: string,
       callback: (name: string, data: string) => void,
     ): Promise<void>;
+
+    /**
+     * Stop an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
     export function stopContainer(engineId: string, id: string): Promise<void>;
+
+    /**
+     * Delete an existing container
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     */
+
     export function deleteContainer(engineId: string, id: string): Promise<void>;
+    /**
+     * Build a container image
+     *
+     * @param context the build context directory
+     * @param eventCollect a function called when new build logs are emitted or new events happen during the build operation. The value of `eventName` can be either `stream` (and `data` contains the logs), or `finish` indicating the end of the build operation, or `error` in case of build error (and `data` contains the error message)
+     * @param options parameters for the build operation
+     */
     export function buildImage(
-      // build context directory
       context: string,
       eventCollect: (eventName: 'stream' | 'error' | 'finish', data: string) => void,
       options?: BuildImageOptions,
     );
+
+    /**
+     * Save on disk a tarball containing the image and its metadata.
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id or name of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param filename the file on which to save the container image content
+     */
     export function saveImage(engineId: string, id: string, filename: string): Promise<void>;
+
+    /**
+     * List the container images across all container engines. Only images from a final layer (no children) are returned.
+     *
+     * @return A promise resolving to an array of images information. This method returns a subset of the available information for images. To get the complete description of a specific image, you can use the {@link containerEngine.getImageInspect} method.
+     */
     export function listImages(): Promise<ImageInfo[]>;
+
+    /**
+     * Tag an image so that it becomes part of a repository
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param imageId the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param repo The repository to tag in. For example, `someuser/someimage`
+     * @param tag The name of the new tag
+     */
     export function tagImage(engineId: string, imageId: string, repo: string, tag?: string): Promise<void>;
+
+    /**
+     * Push an image to a registry.
+     *
+     * If you wish to push an image on to a private registry, that image must already have a tag which references the registry. For example, `registry.example.com/myimage:latest`.
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param imageId the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @param callback the function called when new logs are emitted or new events happen on the stream. The value of `name` can be either `data`(and `data` contains the logs), or `end` indicating the end of the stream, or `first-message` indicating no data has been emitted yet on the stream.
+     * @param authInfo Authentication credentials
+     */
     export function pushImage(
       engineId: string,
       imageId: string,
@@ -2295,12 +2972,34 @@ declare module '@podman-desktop/api' {
       authInfo?: ContainerAuthInfo,
     ): Promise<void>;
 
+    /**
+     * Pull an image from a registry
+     *
+     * @param containerProviderConnection the connection to the local engine to use for pulling the image
+     * @param imageName the name of the image to pull
+     * @param callback the function called when new logs are emitted during the pull operation
+     */
     export function pullImage(
       containerProviderConnection: ContainerProviderConnection,
       imageName: string,
       callback: (event: PullEvent) => void,
     ): Promise<void>;
+
+    /**
+     * Delete a container image from a local engine
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     */
     export function deleteImage(engineId: string, id: string): Promise<void>;
+
+    /**
+     * Return low-level information about an image
+     *
+     * @param engineId the id of the engine managing the image, obtained from the result of {@link containerEngine.listImages}
+     * @param id the id of the image on this engine, obtained from the result of {@link containerEngine.listImages}
+     * @return A promise resolving to a structure containing the image information
+     */
     export function getImageInspect(engineId: string, id: string): Promise<ImageInspectInfo>;
 
     export function info(engineId: string): Promise<ContainerEngineInfo>;
@@ -2323,6 +3022,9 @@ declare module '@podman-desktop/api' {
       overrideParameters: PodmanContainerCreateOptions,
     ): Promise<{ Id: string; Warnings: string[] }>;
     export function startPod(engineId: string, podId: string): Promise<void>;
+    export function listPods(): Promise<PodInfo[]>;
+    export function stopPod(engineId: string, podId: string): Promise<void>;
+    export function removePod(engineId: string, podId: string): Promise<void>;
   }
 
   /**
@@ -2920,8 +3622,7 @@ declare module '@podman-desktop/api' {
     /**
      * Store a new value for key in the context.
      * This can be used in enablement of command or with the when property.
-     * The key should consists of '<extension-
-     * id>.<actual-key>'.
+     * The key should consists of '"extension-id"."actual-key"'.
      *
      * @param key the key of the key/value pair to be added to the context
      * @param value value associated to the key
@@ -3004,18 +3705,48 @@ declare module '@podman-desktop/api' {
     export function createCliTool(options: CliToolOptions): CliTool;
   }
 
+  /**
+   * a specific error/recommendation found during an image check
+   */
   export interface ImageCheck {
+    /**
+     * a short and descriptive name for the error/recommendation
+     */
     name: string;
+    /**
+     * either the feedback is positive or negative
+     */
     status: 'success' | 'failed';
+    /**
+     * severity of the error/recommendation, when the status is `failed`
+     */
     severity?: 'low' | 'medium' | 'high' | 'critical';
+    /**
+     * full description of the error/recommendation
+     */
     markdownDescription?: string;
   }
 
+  /**
+   * the complete result of an image check
+   */
   export interface ImageChecks {
+    /**
+     * the list of errors/recommendations found during the image check
+     */
     checks: ImageCheck[];
   }
 
+  /**
+   * Interface to be implemented by image checker providers
+   */
   export interface ImageCheckerProvider {
+    /**
+     *
+     * @param image Info about the image to analyze
+     * @param token a cancellation token the function can use to be informed when the caller asks for the operation to be cancelled
+     * @return the complete result of the analyze, either synchronously of through a Promise
+     */
     check(image: ImageInfo, token?: CancellationToken): ProviderResult<ImageChecks>;
   }
 
@@ -3023,7 +3754,24 @@ declare module '@podman-desktop/api' {
     readonly label: string;
   }
 
+  /**
+   * Module providing to extensions a way to register as an image checker.
+   *
+   * An Image Checker is a program analyzing container images and
+   * returning errors and recommendations, related to security,
+   * optimization, best practices, etc.
+   */
   export namespace imageChecker {
+    /**
+     * Register the extension as an Image Checker.
+     *
+     * As an image checker, a provider needs to implement a specific interface, so the core
+     * application can call the provider with specific tasks when necessary.
+     *
+     * @param imageCheckerProvider an object implementing the `ImageCheckerProvider` interface
+     * @param metadata optional metadata attached to this provider
+     * @return A disposable that unregisters this provider when being disposed
+     */
     export function registerImageCheckerProvider(
       imageCheckerProvider: ImageCheckerProvider,
       metadata?: ImageCheckerProviderMetadata,
@@ -3059,5 +3807,13 @@ declare module '@podman-desktop/api' {
 
     // Navigate to a specific contribution (aka extension page) referenced by name
     export function navigateToContribution(name: string): Promise<void>;
+
+    /**
+     * Navigate to a specific Webview
+     * @param webviewId The id of the Webview to navigate to
+     * @see {@link window.listWebviews listWebviews} to get a list of Webviews and their ids
+     * @see {@link window.createWebviewPanel createWebviewPanel} for creating a Webview
+     */
+    export function navigateToWebview(webviewId: string): Promise<void>;
   }
 }

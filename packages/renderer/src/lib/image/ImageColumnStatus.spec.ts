@@ -38,7 +38,7 @@ test('Expect simple column styling', async () => {
     humanSize: '',
     base64RepoTag: '',
     selected: false,
-    inUse: true,
+    status: 'USED',
     icon: ImageIcon,
     badges: [],
   };
@@ -46,5 +46,5 @@ test('Expect simple column styling', async () => {
 
   const text = screen.getByRole('status');
   expect(text).toBeInTheDocument();
-  expect(text).toHaveClass('bg-green-400');
+  expect(text).toHaveClass('bg-status-running');
 });

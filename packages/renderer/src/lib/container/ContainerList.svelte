@@ -153,10 +153,26 @@ function toggleCheckboxContainerGroup(checked: boolean, containerGroup: Containe
 // delete the items selected in the list
 let bulkDeleteInProgress = false;
 async function deleteSelectedContainers() {
-  // delete pods first if any
   const podGroups = containerGroups
     .filter(group => group.type === ContainerGroupInfoTypeUI.POD)
     .filter(pod => pod.selected);
+  const selectedContainers = containerGroups
+    .filter(group => group.type !== ContainerGroupInfoTypeUI.POD)
+    .map(group => group.containers)
+    .flat()
+    .filter(container => container.selected);
+
+  if (podGroups.length + selectedContainers.length === 0) {
+    return;
+  }
+
+  // mark pods and containers for deletion
+  bulkDeleteInProgress = true;
+  podGroups.forEach(pod => (pod.status = 'DELETING'));
+  selectedContainers.forEach(container => (container.state = 'DELETING'));
+  containerGroups = [...containerGroups];
+
+  // delete pods first if any
   if (podGroups.length > 0) {
     await Promise.all(
       podGroups.map(async podGroup => {
@@ -170,21 +186,14 @@ async function deleteSelectedContainers() {
       }),
     );
   }
-  // then containers (that are not inside a pod)
-  const selectedContainers = containerGroups
-    .filter(group => group.type !== ContainerGroupInfoTypeUI.POD)
-    .map(group => group.containers)
-    .flat()
-    .filter(container => container.selected);
 
+  // then containers (that are not inside a pod)
   if (selectedContainers.length > 0) {
-    bulkDeleteInProgress = true;
     await Promise.all(
       selectedContainers.map(async container => {
         container.actionInProgress = true;
         // reset error when starting task
         container.actionError = '';
-        container.state = 'DELETING';
         containerGroups = [...containerGroups];
         try {
           await window.deleteContainer(container.engineId, container.id);
@@ -198,8 +207,8 @@ async function deleteSelectedContainers() {
         }
       }),
     );
-    bulkDeleteInProgress = false;
   }
+  bulkDeleteInProgress = false;
 }
 
 function createPodFromContainers() {
@@ -490,8 +499,8 @@ function setStoppedFilter() {
       </thead>
 
       <!-- Display each group -->
-      {#each containerGroups as containerGroup}
-        <tbody>
+      <tbody>
+        {#each containerGroups as containerGroup}
           {#if containerGroup.type === ContainerGroupInfoTypeUI.COMPOSE || containerGroup.type === ContainerGroupInfoTypeUI.POD}
             <tr class="group h-12 bg-charcoal-800 hover:bg-zinc-700">
               <td
@@ -662,9 +671,9 @@ function setStoppedFilter() {
               </tr>
             {/each}
           {/if}
-        </tbody>
-        <tr><td class="leading-[8px]">&nbsp;</td></tr>
-      {/each}
+          <tr><td class="leading-[8px]">&nbsp;</td></tr>
+        {/each}
+      </tbody>
     </table>
 
     {#if providerConnections.length === 0}
@@ -693,7 +702,8 @@ function setStoppedFilter() {
     on:close="{() => {
       openChoiceModal = false;
     }}">
-    <button
+    <div
+      role="presentation"
       class="inline-block w-full overflow-hidden text-left transition-all transform bg-charcoal-600 z-50 rounded-xl shadow-xl shadow-charcoal-900"
       on:keydown="{keydownChoice}">
       <div class="flex items-center justify-between bg-black px-5 py-4 border-b-2 border-violet-700">
@@ -715,6 +725,6 @@ function setStoppedFilter() {
           <Button type="secondary" on:click="{() => fromExistingImage()}">Existing image</Button>
         </div>
       </div>
-    </button>
+    </div>
   </Modal>
 {/if}

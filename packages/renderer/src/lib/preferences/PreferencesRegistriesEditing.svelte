@@ -7,6 +7,8 @@ import DropdownMenuItem from '../ui/DropDownMenuItem.svelte';
 import { faPlusCircle, faTrash, faUser, faUserPen } from '@fortawesome/free-solid-svg-icons';
 import SettingsPage from './SettingsPage.svelte';
 import Button from '../ui/Button.svelte';
+import Input from '/@/lib/ui/Input.svelte';
+import PasswordInput from '/@/lib/ui/PasswordInput.svelte';
 
 // contains the original instances of registries when user clicks on `Edit password` menu item
 // to be able to roll back changes when `Cancel` button is clicked
@@ -23,9 +25,6 @@ export let showNewRegistryForm = false;
 
 // at this moment it should be `podman`, but later can be any
 let defaultProviderSourceName: string;
-
-// store password input fields to handle password showing trigger
-let passwordElements: { serverUrl: string; element: HTMLInputElement }[] = [];
 
 // List of suggested registries to show
 let suggestedRegistries: containerDesktopAPI.RegistrySuggestedProvider[] = [];
@@ -101,18 +100,8 @@ function setPasswordForRegistryVisible(registry: containerDesktopAPI.Registry, v
 
   if (visible && index === -1) {
     showPasswordForServerUrls = [...showPasswordForServerUrls, serverUrl];
-
-    let passwordInputElement = passwordElements.find(el => el.serverUrl === serverUrl);
-    if (passwordInputElement) {
-      passwordInputElement.element.type = 'text';
-    }
   } else if (!visible && index > -1) {
     showPasswordForServerUrls = showPasswordForServerUrls.filter(r => r !== serverUrl);
-
-    let passwordInputElement = passwordElements.find(el => el.serverUrl === serverUrl);
-    if (passwordInputElement) {
-      passwordInputElement.element.type = 'password';
-    }
   }
 }
 
@@ -198,7 +187,7 @@ async function loginToRegistry(registry: containerDesktopAPI.Registry) {
         title: 'Invalid Certificate',
         type: 'warning',
         message: 'The certificate for this registry is not trusted / verifiable. Would you like to still add it?',
-        buttons: ['Yes', 'No'],
+        buttons: ['Yes', 'Cancel'],
       });
       if (result && result.response === 0) {
         registry.insecure = true;
@@ -234,17 +223,6 @@ function removeExistingRegistry(registry: containerDesktopAPI.Registry) {
   window.unregisterImageRegistry(registry);
   setPasswordForRegistryVisible(registry, false);
 }
-
-const processPasswordElement = (node: HTMLInputElement, registry: containerDesktopAPI.Registry) => {
-  const serverUrl = registry === newRegistryRequest ? '' : registry.serverUrl;
-  passwordElements = [...passwordElements, { serverUrl: serverUrl, element: node }];
-
-  return {
-    destroy() {
-      passwordElements = passwordElements.filter(el => el.serverUrl !== serverUrl);
-    },
-  };
-};
 </script>
 
 <SettingsPage title="Registries">
@@ -257,7 +235,7 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
   <div class="container bg-charcoal-600 rounded-md p-3">
     <!-- Registries table start -->
     <div class="w-full border-t border-b border-gray-900" role="table" aria-label="Registries">
-      <div class="flex w-full" role="rowgroup" aria-label="header">
+      <div class="flex w-full space-x-2" role="rowgroup" aria-label="header">
         <div class="flex-1 text-left py-4 pl-5 text-sm font-bold w-auto" role="columnheader">Registry Location</div>
         <div class="text-left py-4 text-sm font-bold w-1/4" role="columnheader">Username</div>
         <div class="text-left py-4 text-sm font-bold w-2/5" role="columnheader">Password</div>
@@ -269,7 +247,7 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
           class="flex flex-col w-full border-t border-gray-900"
           role="row"
           aria-label="{registry.name ? registry.name : registry.serverUrl}">
-          <div class="flex flex-row items-center pt-4 pb-3">
+          <div class="flex flex-row items-center pt-4 pb-3 space-x-2">
             <div class="flex-1 pl-5 pr-5 text-sm w-auto m-auto" role="cell">
               <div class="flex w-full h-full">
                 <div class="flex items-center">
@@ -295,15 +273,10 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
             </div>
 
             <!-- Username -->
-            <div class="text-sm w-1/4 m-auto" role="cell">
+            <div class="text-sm w-1/4 m-auto text-ellipsis overflow-hidden max-x-32" role="cell">
               {#if originRegistries.some(r => r.serverUrl === registry.serverUrl)}
                 <div class="text-left h-7 pr-5 mt-1.5 mb-0.5 text-sm w-full">
-                  <input
-                    type="text"
-                    placeholder="Username"
-                    aria-label="Username"
-                    bind:value="{registry.username}"
-                    class="block px-3 block w-full h-full transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none" />
+                  <Input placeholder="Username" aria-label="Username" bind:value="{registry.username}" />
                 </div>
               {:else if !registry.username && !registry.secret}
                 <Button on:click="{() => markRegistryAsModified(registry)}">Login now</Button>
@@ -317,39 +290,14 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
               <div class="flex flex-row">
                 {#if originRegistries.some(r => r.serverUrl === registry.serverUrl)}
                   <div class="flex text-left h-7 pr-5 text-sm w-full">
-                    <div class="relative flex-1">
-                      <div class="absolute inset-y-0 right-0 flex px-1">
-                        <input
-                          id="password-toggle-{registry.serverUrl}"
-                          aria-label="Toggle password"
-                          class="hidden"
-                          type="checkbox"
-                          value="false"
-                          tabindex="-1"
-                          on:change="{() =>
-                            setPasswordForRegistryVisible(
-                              registry,
-                              !showPasswordForServerUrls.some(r => r === registry.serverUrl),
-                            )}" />
-                        <label
-                          class="px-2 py-1 text text-gray-900 cursor-pointer"
-                          for="password-toggle-{registry.serverUrl}">
-                          {#if showPasswordForServerUrls.some(r => r === registry.serverUrl)}
-                            <i class="fas fa-eye-slash"></i>
-                          {:else}
-                            <i class="fas fa-eye"></i>
-                          {/if}
-                        </label>
-                      </div>
-
-                      <input
-                        use:processPasswordElement="{registry}"
-                        type="password"
-                        placeholder="Password"
-                        aria-label="Password"
-                        bind:value="{registry.secret}"
-                        class="px-3 block w-full h-full transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none pr-10" />
-                    </div>
+                    <PasswordInput
+                      id="r.serverUrl"
+                      bind:password="{registry.secret}"
+                      on:action="{() =>
+                        setPasswordForRegistryVisible(
+                          registry,
+                          !showPasswordForServerUrls.some(r => r === registry.serverUrl),
+                        )}" />
                   </div>
                   <div class="h-7 text-sm">
                     <Button on:click="{() => loginToRegistry(registry)}" inProgress="{loggingIn}">Login</Button>
@@ -433,7 +381,7 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
       {#each $registriesSuggestedInfos as registry, i (registry)}
         <!-- Add new registry form start -->
         <div
-          class="flex flex-col w-full border-t border-gray-900"
+          class="flex flex-col w-full border-t border-gray-900 space-x-2"
           role="row"
           aria-label="{registry.name ? registry.name : registry.url}">
           <div class="flex flex-row items-center pt-4 pb-3">
@@ -460,46 +408,21 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
             </div>
             <div class="flex pr-5 text-sm w-1/4" role="cell">
               {#if listedSuggestedRegistries[i]}
-                <input
-                  type="text"
-                  placeholder="Username"
-                  aria-label="Username"
-                  bind:value="{newRegistryRequest.username}"
-                  class="px-3 block w-full h-7 pr-5 transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none" />
+                <Input placeholder="Username" aria-label="Username" bind:value="{newRegistryRequest.username}" />
               {/if}
             </div>
             <div class="text-sm w-2/5" role="cell">
               <div class="flex flex-row items-center">
                 <div class="relative flex-1 mr-5">
                   {#if listedSuggestedRegistries[i]}
-                    <div class="absolute inset-y-0 right-0 flex">
-                      <input
-                        id="password-toggle-new-registry"
-                        aria-label="Toggle password"
-                        class="hidden"
-                        type="checkbox"
-                        value="false"
-                        tabindex="-1"
-                        on:change="{() =>
-                          setPasswordForRegistryVisible(
-                            newRegistryRequest,
-                            !showPasswordForServerUrls.some(r => r === ''),
-                          )}" />
-                      <label class="px-2 py-1 text text-gray-900 cursor-pointer" for="password-toggle-new-registry">
-                        {#if showPasswordForServerUrls.some(r => r === '')}
-                          <i class="fas fa-eye-slash"></i>
-                        {:else}
-                          <i class="fas fa-eye"></i>
-                        {/if}
-                      </label>
-                    </div>
-                    <input
-                      use:processPasswordElement="{newRegistryRequest}"
-                      type="password"
-                      placeholder="Password"
-                      aria-label="Password"
-                      bind:value="{newRegistryRequest.secret}"
-                      class="px-3 block w-full h-7 transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none pr-10" />
+                    <PasswordInput
+                      id="r.serverUrl"
+                      bind:password="{newRegistryRequest.secret}"
+                      on:action="{() =>
+                        setPasswordForRegistryVisible(
+                          newRegistryRequest,
+                          !showPasswordForServerUrls.some(r => r === ''),
+                        )}" />
                   {/if}
                 </div>
 
@@ -540,56 +463,27 @@ const processPasswordElement = (node: HTMLInputElement, registry: containerDeskt
 
       {#if showNewRegistryForm}
         <!-- Add new registry form start -->
-        <div class="flex flex-col w-full border-t border-gray-900">
+        <div class="flex flex-col w-full border-t border-gray-900 space-x-2">
           <div class="flex flex-row items-center pt-4 pb-3">
             <div class="flex-1 pl-10 pr-5 text-sm w-auto m-auto">
-              <input
-                type="text"
+              <Input
                 placeholder="URL (HTTPS only)"
                 aria-label="Register URL"
-                bind:value="{newRegistryRequest.serverUrl}"
-                class="px-3 block w-full h-7 pr-5 transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none" />
+                bind:value="{newRegistryRequest.serverUrl}" />
             </div>
             <div class="flex pr-5 text-sm w-1/4">
-              <input
-                type="text"
-                placeholder="Username"
-                aria-label="Username"
-                bind:value="{newRegistryRequest.username}"
-                class="px-3 block w-full h-7 pr-5 transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none" />
+              <Input placeholder="Username" aria-label="Username" bind:value="{newRegistryRequest.username}" />
             </div>
             <div class="text-sm w-2/5">
               <div class="flex flex-row">
-                <div class="relative flex-1 mr-5">
-                  <div class="absolute inset-y-0 right-0 flex">
-                    <input
-                      id="password-toggle-new-registry"
-                      aria-label="Toggle password"
-                      class="hidden"
-                      type="checkbox"
-                      value="false"
-                      tabindex="-1"
-                      on:change="{() =>
-                        setPasswordForRegistryVisible(
-                          newRegistryRequest,
-                          !showPasswordForServerUrls.some(r => r === ''),
-                        )}" />
-                    <label class="px-2 py-1 text text-gray-900 cursor-pointer" for="password-toggle-new-registry">
-                      {#if showPasswordForServerUrls.some(r => r === '')}
-                        <i class="fas fa-eye-slash"></i>
-                      {:else}
-                        <i class="fas fa-eye"></i>
-                      {/if}
-                    </label>
-                  </div>
-                  <input
-                    use:processPasswordElement="{newRegistryRequest}"
-                    type="password"
-                    placeholder="Password"
-                    aria-label="Password"
-                    bind:value="{newRegistryRequest.secret}"
-                    class="px-3 block w-full h-7 transition ease-in-out delay-50 bg-charcoal-800 text-gray-700 placeholder-gray-700 rounded-sm focus:outline-none pr-10" />
-                </div>
+                <PasswordInput
+                  id="newRegistryRequest"
+                  bind:password="{newRegistryRequest.secret}"
+                  on:action="{() =>
+                    setPasswordForRegistryVisible(
+                      newRegistryRequest,
+                      !showPasswordForServerUrls.some(r => r === ''),
+                    )}" />
 
                 <div class="flex text-sm">
                   <Button
