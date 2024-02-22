@@ -48,8 +48,6 @@ import {
   V1DeleteOptions,
   VersionApi,
   Watch,
-  VersionApi,
-  makeInformer,
   KubernetesObjectApi,
   HttpError,
 } from '@kubernetes/client-node';
