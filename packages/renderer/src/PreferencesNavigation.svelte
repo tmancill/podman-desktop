@@ -1,10 +1,11 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-import { extensionInfos } from './stores/extensions';
-import { configurationProperties } from './stores/configurationProperties';
+import type { TinroRouteMeta } from 'tinro';
+
 import { CONFIGURATION_DEFAULT_SCOPE } from '../../main/src/plugin/configuration-registry-constants';
 import SettingsNavItem from './lib/preferences/SettingsNavItem.svelte';
-import type { TinroRouteMeta } from 'tinro';
+import { configurationProperties } from './stores/configurationProperties';
+import { extensionInfos } from './stores/extensions';
 
 export let meta: TinroRouteMeta;
 
@@ -41,11 +42,11 @@ onMount(async () => {
 </script>
 
 <nav
-  class="z-1 w-leftsidebar min-w-leftsidebar shadow flex-col justify-between flex transition-all duration-500 ease-in-out bg-charcoal-700"
+  class="z-1 w-leftsidebar min-w-leftsidebar shadow flex-col justify-between flex transition-all duration-500 ease-in-out bg-[var(--pd-secondary-nav-bg)]"
   aria-label="PreferencesNavigation">
   <div class="flex items-center">
     <div class="pt-4 px-5 mb-10">
-      <p class="text-xl first-letter:uppercase">Settings</p>
+      <p class="text-xl first-letter:uppercase text-[color:var(--pd-secondary-nav-header-text)]">Settings</p>
     </div>
   </div>
   <div class="h-full overflow-hidden hover:overflow-y-auto" style="margin-bottom:auto">

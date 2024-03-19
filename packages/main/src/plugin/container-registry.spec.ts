@@ -16,26 +16,34 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import path from 'node:path';
+import { PassThrough } from 'node:stream';
+
+import type * as podmanDesktopAPI from '@podman-desktop/api';
+import Dockerode from 'dockerode';
+import moment from 'moment';
+import nock from 'nock';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { ApiSenderType } from '/@/plugin/api.js';
+import type { ImageInfo } from '/@/plugin/api/image-info.js';
+import type { Certificates } from '/@/plugin/certificates.js';
 import type { InternalContainerProvider } from '/@/plugin/container-registry.js';
 import { ContainerProviderRegistry } from '/@/plugin/container-registry.js';
-import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
-import type { Certificates } from '/@/plugin/certificates.js';
-import type { Proxy } from '/@/plugin/proxy.js';
 import { ImageRegistry } from '/@/plugin/image-registry.js';
-import type { ApiSenderType } from '/@/plugin/api.js';
-import Dockerode from 'dockerode';
-import { EventEmitter } from 'node:events';
-import type * as podmanDesktopAPI from '@podman-desktop/api';
-import nock from 'nock';
-import type { LibPod } from './dockerode/libpod-dockerode.js';
-import { LibpodDockerode } from './dockerode/libpod-dockerode.js';
-import moment from 'moment';
-import type { ProviderContainerConnectionInfo } from './api/provider-info.js';
+import type { Proxy } from '/@/plugin/proxy.js';
+import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
+
 import * as util from '../util.js';
-import { PassThrough } from 'node:stream';
+import type { ContainerCreateOptions } from './api/container-info.js';
+import type { ProviderContainerConnectionInfo } from './api/provider-info.js';
+import type { ContainerCreateOptions as PodmanContainerCreateOptions, LibPod } from './dockerode/libpod-dockerode.js';
+import { LibpodDockerode } from './dockerode/libpod-dockerode.js';
 import type { EnvfileParser } from './env-file-parser.js';
 import type { ProviderRegistry } from './provider-registry.js';
+
 const tar: { pack: (dir: string) => NodeJS.ReadableStream } = require('tar-fs');
 
 /* eslint-disable @typescript-eslint/no-empty-function */
@@ -212,6 +220,14 @@ class TestContainerProviderRegistry extends ContainerProviderRegistry {
     return super.getMatchingContainer(engineId, containerId);
   }
 
+  public getMatchingPodmanEngine(engineId: string): InternalContainerProvider {
+    return super.getMatchingPodmanEngine(engineId);
+  }
+
+  public getMatchingPodmanEngineLibPod(engineId: string): LibPod {
+    return super.getMatchingPodmanEngineLibPod(engineId);
+  }
+
   public getMatchingContainerProvider(
     providerContainerConnectionInfo: ProviderContainerConnectionInfo | podmanDesktopAPI.ContainerProviderConnection,
   ): InternalContainerProvider {
@@ -230,7 +246,7 @@ class TestContainerProviderRegistry extends ContainerProviderRegistry {
     return super.getMatchingEngineFromConnection(providerContainerConnectionInfo);
   }
 
-  setStreamsOutputPerContainerId(id: string, data: Buffer[]) {
+  setStreamsOutputPerContainerId(id: string, data: Buffer[]): void {
     this.streamsOutputPerContainerId.set(id, data);
   }
 
@@ -242,7 +258,7 @@ class TestContainerProviderRegistry extends ContainerProviderRegistry {
     return this.streamsPerContainerId;
   }
 
-  setStreamsPerContainerId(id: string, data: NodeJS.ReadWriteStream) {
+  setStreamsPerContainerId(id: string, data: NodeJS.ReadWriteStream): void {
     this.streamsPerContainerId.set(id, data);
   }
 
@@ -260,6 +276,15 @@ const apiSender: ApiSenderType = {
   send: vi.fn(),
   receive: vi.fn(),
 };
+
+vi.mock('node:fs', async () => {
+  return {
+    promises: {
+      readdir: vi.fn(),
+    },
+    createWriteStream: vi.fn(),
+  };
+});
 
 beforeEach(() => {
   nock.cleanAll();
@@ -457,7 +482,7 @@ test('test listSimpleContainersByLabel with compose label', async () => {
 
 describe('execInContainer', () => {
   // stream using first Byte being header
-  const writeData = (eventEmitter: EventEmitter, type: 'stdout' | 'stderr', data: string) => {
+  const writeData = (eventEmitter: EventEmitter, type: 'stdout' | 'stderr', data: string): void => {
     const header = Buffer.alloc(8);
     // first byte is type
     header.writeUInt8(type === 'stdout' ? 1 : 2, 0);
@@ -498,12 +523,12 @@ describe('execInContainer', () => {
     vi.spyOn(containerRegistry, 'getMatchingContainer').mockReturnValue(dockerodeContainer);
 
     let stdout = '';
-    const stdoutFunction = (data: Buffer) => {
+    const stdoutFunction = (data: Buffer): void => {
       stdout += data.toString();
     };
 
     let stderr = '';
-    const stderrFunction = (data: Buffer) => {
+    const stderrFunction = (data: Buffer): void => {
       stderr += data.toString();
     };
 
@@ -570,12 +595,12 @@ describe('execInContainer', () => {
     vi.spyOn(containerRegistry, 'getMatchingContainer').mockReturnValue(dockerodeContainer);
 
     let stdout = '';
-    const stdoutFunction = (data: Buffer) => {
+    const stdoutFunction = (data: Buffer): void => {
       stdout += data.toString();
     };
 
     let stderr = '';
-    const stderrFunction = (data: Buffer) => {
+    const stderrFunction = (data: Buffer): void => {
       stderr += data.toString();
     };
 
@@ -2391,7 +2416,7 @@ describe('createContainer', () => {
     expect(createContainerMock).toHaveBeenCalledWith(expect.not.objectContaining({ EnvFiles: ['file1', 'file2'] }));
   });
 
-  async function verifyCreateContainer(options: object) {
+  async function verifyCreateContainer(options: object): Promise<void> {
     const createdId = '1234';
 
     const startMock = vi.fn();
@@ -3288,5 +3313,549 @@ test('list pods', async () => {
   expect(pod.Labels).toStrictEqual({
     key1: 'value1',
     key2: 'value2',
+  });
+});
+
+describe('getMatchingPodmanEngine', () => {
+  const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+  test('should throw error if no engine is found', () => {
+    expect(() => containerRegistry.getMatchingPodmanEngine('podman')).toThrowError('no engine matching this engine');
+  });
+  test('should throw error if engine has no api', () => {
+    containerRegistry.addInternalProvider('podman', {
+      name: 'podman',
+      id: 'podman1',
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+    expect(() => containerRegistry.getMatchingPodmanEngine('podman')).toThrowError(
+      'no running provider for the matching engine',
+    );
+  });
+  test('should throw error if engine has no libPodApi', () => {
+    containerRegistry.addInternalProvider('podman', {
+      name: 'podman',
+      id: 'podman1',
+      api,
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+    expect(() => containerRegistry.getMatchingPodmanEngine('podman')).toThrowError(
+      'LibPod is not supported by this engine',
+    );
+  });
+  test('should return found engine', () => {
+    const containerProvider = {
+      name: 'podman',
+      id: 'podman1',
+      api,
+      libpodApi: api,
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider;
+    containerRegistry.addInternalProvider('podman', containerProvider);
+    const result = containerRegistry.getMatchingPodmanEngine('podman');
+    expect(result).equal(containerProvider);
+  });
+});
+describe('getMatchingPodmanEngineLibPod', () => {
+  const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+  test('should return found lib', () => {
+    const containerProvider = {
+      name: 'podman',
+      id: 'podman1',
+      api,
+      libpodApi: api,
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider;
+    containerRegistry.addInternalProvider('podman', containerProvider);
+    const result = containerRegistry.getMatchingPodmanEngineLibPod('podman');
+    expect(result).equal(api);
+  });
+});
+
+describe('createContainerLibPod', () => {
+  test('throw if there is no podman engine running', async () => {
+    await expect(() =>
+      containerRegistry.createContainer('engine', {
+        Image: 'image',
+        Env: ['key=value'],
+        pod: 'pod',
+        name: 'name',
+      }),
+    ).rejects.toThrowError('no engine matching this engine');
+  });
+  test('check the createPodmanContainer is correctly called with options param', async () => {
+    const dockerAPI = new Dockerode({ protocol: 'http', host: 'localhost' });
+
+    const libpod = new LibpodDockerode();
+    libpod.enhancePrototypeWithLibPod();
+    containerRegistry.addInternalProvider('podman1', {
+      name: 'podman',
+      id: 'podman1',
+      api: dockerAPI,
+      libpodApi: dockerAPI,
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+
+    const createPodmanContainerMock = vi
+      .spyOn(dockerAPI as unknown as LibPod, 'createPodmanContainer')
+      .mockImplementation(_options =>
+        Promise.resolve({
+          Id: 'id',
+          Warnings: [],
+        }),
+      );
+    vi.spyOn(dockerAPI as unknown as Dockerode, 'getContainer').mockImplementation((_id: string) => {
+      return {
+        start: () => {},
+      } as unknown as Dockerode.Container;
+    });
+    const options: ContainerCreateOptions = {
+      Image: 'image',
+      Env: ['key=value'],
+      pod: 'pod',
+      name: 'name',
+      HostConfig: {
+        Mounts: [
+          {
+            Target: 'destination',
+            Source: 'source',
+            Type: 'bind',
+            BindOptions: {
+              Propagation: 'rprivate',
+            },
+            ReadOnly: false,
+          },
+        ],
+        NetworkMode: 'mode',
+        SecurityOpt: ['default'],
+        PortBindings: {
+          '8080': [
+            {
+              HostPort: '8080',
+            },
+          ],
+        },
+        RestartPolicy: {
+          Name: 'restartpolicy',
+          MaximumRetryCount: 2,
+        },
+        AutoRemove: true,
+        CapAdd: ['add'],
+        CapDrop: ['drop'],
+        Privileged: true,
+        ReadonlyRootfs: true,
+        UsernsMode: 'userns',
+      },
+      Cmd: ['cmd'],
+      Entrypoint: 'entrypoint',
+      Hostname: 'hostname',
+      User: 'user',
+      Labels: {
+        label: '1',
+      },
+      WorkingDir: 'work_dir',
+      StopTimeout: 2,
+      HealthCheck: {
+        Timeout: 100,
+      },
+    };
+    const expectedOptions: PodmanContainerCreateOptions = {
+      name: options.name,
+      command: options.Cmd,
+      entrypoint: options.Entrypoint,
+      env: {
+        key: 'value',
+      },
+      image: options.Image,
+      pod: options.pod,
+      hostname: options.Hostname,
+      mounts: [
+        {
+          Destination: 'destination',
+          Source: 'source',
+          Type: 'bind',
+          Propagation: 'rprivate',
+          RW: true,
+          Options: [],
+        },
+      ],
+      netns: {
+        nsmode: 'mode',
+      },
+      seccomp_policy: 'default',
+      portmappings: [
+        {
+          container_port: 8080,
+          host_port: 8080,
+        },
+      ],
+      user: options.User,
+      labels: options.Labels,
+      work_dir: options.WorkingDir,
+      stop_timeout: options.StopTimeout,
+      healthconfig: options.HealthCheck,
+      restart_policy: options.HostConfig?.RestartPolicy?.Name,
+      restart_tries: options.HostConfig?.RestartPolicy?.MaximumRetryCount,
+      remove: options.HostConfig?.AutoRemove,
+      cap_add: options.HostConfig?.CapAdd,
+      cap_drop: options.HostConfig?.CapDrop,
+      privileged: options.HostConfig?.Privileged,
+      read_only_filesystem: options.HostConfig?.ReadonlyRootfs,
+      hostadd: options.HostConfig?.ExtraHosts,
+      userns: options.HostConfig?.UsernsMode,
+    };
+    vi.spyOn(containerRegistry, 'attachToContainer').mockImplementation(
+      (
+        _engine: InternalContainerProvider,
+        _container: Dockerode.Container,
+        _hasTty?: boolean,
+        _openStdin?: boolean,
+      ) => {
+        return Promise.resolve();
+      },
+    );
+    await containerRegistry.createContainer('podman1', options);
+    expect(createPodmanContainerMock).toBeCalledWith(expectedOptions);
+  });
+});
+
+describe('getContainerCreateMountOptionFromBind', () => {
+  interface OptionFromBindOptions {
+    destination: string;
+    source: string;
+    mode?: string;
+    propagation?: string;
+  }
+  function verifyGetContainerCreateMountOptionFromBind(options: OptionFromBindOptions): void {
+    let bind = `${options.source}:${options.destination}`;
+    const mountOptions = ['rbind'];
+    if (options.mode || options.propagation) {
+      bind += ':';
+      if (options.mode) {
+        mountOptions.push(options.mode);
+        bind += `${options.mode},`;
+      }
+      if (options.propagation) {
+        bind += `${options.propagation}`;
+      }
+    }
+    const result = containerRegistry.getContainerCreateMountOptionFromBind(bind);
+
+    expect(result).toStrictEqual({
+      Destination: options.destination,
+      Source: options.source,
+      Propagation: options.propagation ?? 'rprivate',
+      Type: 'bind',
+      RW: true,
+      Options: mountOptions,
+    });
+  }
+  test('return undefined if bind has an invalid value', () => {
+    const result = containerRegistry.getContainerCreateMountOptionFromBind('invalidBind');
+    expect(result).toBeUndefined();
+  });
+  test('return option with default propagation and mode if no flag is specified', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+    });
+  });
+  test('return option with default propagation and mode as per flag - Z', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      mode: 'Z',
+    });
+  });
+  test('return option with default propagation and mode as per flag - z', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      mode: 'z',
+    });
+  });
+  test('return option with default mode and propagation as per flag - rprivate', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'rprivate',
+    });
+  });
+  test('return option with default mode and propagation as per flag - private', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'private',
+    });
+  });
+  test('return option with default mode and propagation as per flag - shared', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'shared',
+    });
+  });
+  test('return option with default mode and propagation as per flag - rshared', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'rshared',
+    });
+  });
+  test('return option with default mode and propagation as per flag - slave', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'slave',
+    });
+  });
+  test('return option with default mode and propagation as per flag - rslave', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      propagation: 'rslave',
+    });
+  });
+  test('return option with mode and propagation as per flag - Z and rslave', () => {
+    verifyGetContainerCreateMountOptionFromBind({
+      destination: 'v2',
+      source: 'v1',
+      mode: 'Z',
+      propagation: 'rslave',
+    });
+  });
+});
+
+describe('listImages', () => {
+  test('list images without arguments', async () => {
+    const result = await containerRegistry.listImages();
+    expect(result.length).toBe(0);
+
+    expect(vi.spyOn(containerRegistry, 'getMatchingContainerProvider')).not.toHaveBeenCalled();
+  });
+
+  test('list images on a specific provider', async () => {
+    const getMatchingContainerProviderMock = vi.spyOn(containerRegistry, 'getMatchingContainerProvider');
+    const internalContainerProvider = {
+      name: 'dummyName',
+      id: 'dummyId',
+      api: {
+        listImages: vi.fn(),
+      },
+    } as unknown as InternalContainerProvider;
+    getMatchingContainerProviderMock.mockReturnValue(internalContainerProvider);
+
+    const api = internalContainerProvider.api;
+    if (api === undefined) throw new Error('api should not be undefined');
+    vi.spyOn(api, 'listImages').mockResolvedValue([
+      {
+        Id: 'dummyImageId',
+      } as unknown as ImageInfo,
+    ]);
+
+    // List images
+    const result = await containerRegistry.listImages({
+      provider: {
+        id: 'dummyProviderId',
+      } as unknown as podmanDesktopAPI.ContainerProviderConnection,
+    });
+
+    expect(getMatchingContainerProviderMock).toHaveBeenCalled();
+    expect(api.listImages).toHaveBeenCalled();
+
+    expect(result.length).toBe(1);
+    expect(result[0]).toStrictEqual({
+      Id: 'dummyImageId',
+      engineId: 'dummyId',
+      engineName: 'dummyName',
+    });
+  });
+});
+
+test('listInfos without provider', async () => {
+  const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+
+  // set providers
+  containerRegistry.addInternalProvider('podman1', {
+    name: 'podman-1',
+    id: 'podman1',
+    api,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+  containerRegistry.addInternalProvider('podman2', {
+    name: 'podman-2',
+    id: 'podman2',
+    api,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+
+  vi.spyOn(containerRegistry, 'info').mockImplementation(
+    async (engineId: string) =>
+      ({
+        engineId,
+      }) as podmanDesktopAPI.ContainerEngineInfo,
+  );
+  const infos = await containerRegistry.listInfos();
+  expect(infos).toEqual([
+    {
+      engineId: 'podman1',
+    },
+    {
+      engineId: 'podman2',
+    },
+  ]);
+});
+
+test('listInfos with provider', async () => {
+  const getMatchingContainerProviderMock = vi.spyOn(containerRegistry, 'getMatchingContainerProvider');
+  const internalContainerProvider = {
+    name: 'podman-2',
+    id: 'podman2',
+  } as unknown as InternalContainerProvider;
+  getMatchingContainerProviderMock.mockReturnValue(internalContainerProvider);
+
+  const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+
+  // set providers
+  containerRegistry.addInternalProvider('podman1', {
+    name: 'podman-1',
+    id: 'podman1',
+    api,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+  containerRegistry.addInternalProvider('podman2', {
+    name: 'podman-2',
+    id: 'podman2',
+    api,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+
+  vi.spyOn(containerRegistry, 'info').mockImplementation(
+    async (engineId: string) =>
+      ({
+        engineId,
+      }) as podmanDesktopAPI.ContainerEngineInfo,
+  );
+  const infos = await containerRegistry.listInfos({
+    provider: {
+      id: 'podman2',
+    } as unknown as podmanDesktopAPI.ContainerProviderConnection,
+  });
+  expect(infos).toEqual([
+    {
+      engineId: 'podman2',
+    },
+  ]);
+});
+
+describe('exportContainer', () => {
+  function setExportContainerTestEnv(): void {
+    const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+
+    const exportMock = vi.fn().mockResolvedValue({
+      on: vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
+        if (event === 'close') {
+          cb('');
+        }
+      }),
+    } as unknown as NodeJS.ReadableStream);
+    const dockerodeContainer = {
+      export: exportMock,
+    } as unknown as Dockerode.Container;
+
+    vi.spyOn(api, 'getContainer').mockReturnValue(dockerodeContainer);
+
+    // set providers
+    containerRegistry.addInternalProvider('podman1', {
+      name: 'podman-1',
+      id: 'podman1',
+      api,
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+  }
+  test('throw if no engine matching the container', async () => {
+    containerRegistry.addInternalProvider('podman1', {
+      name: 'podman-1',
+      id: 'podman1',
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+    await expect(
+      containerRegistry.exportContainer('engine', {
+        id: 'id',
+        name: 'name',
+        outputDirectory: 'dir',
+      }),
+    ).rejects.toThrowError('no engine matching this container');
+  });
+  test('throw if no provider matching the container', async () => {
+    containerRegistry.addInternalProvider('podman1', {
+      name: 'podman-1',
+      id: 'podman1',
+      connection: {
+        type: 'podman',
+      },
+    } as unknown as InternalContainerProvider);
+    await expect(
+      containerRegistry.exportContainer('podman1', {
+        id: 'id',
+        name: 'name',
+        outputDirectory: 'dir',
+      }),
+    ).rejects.toThrowError('no running provider for the matching container');
+  });
+  test('should export container to given location', async () => {
+    setExportContainerTestEnv();
+    vi.spyOn(fs.promises, 'readdir').mockResolvedValue([]);
+
+    const createWriteStreamMock = vi.spyOn(fs, 'createWriteStream').mockReturnValue({
+      write: vi.fn(),
+      close: vi.fn(),
+    } as unknown as fs.WriteStream);
+    await containerRegistry.exportContainer('podman1', {
+      id: 'id',
+      name: 'name',
+      outputDirectory: 'dir',
+    });
+    expect(createWriteStreamMock).toBeCalledWith(path.join('dir', 'name'), {
+      flags: 'w',
+    });
+  });
+  test('should export container to customized location if given path already exists', async () => {
+    setExportContainerTestEnv();
+    vi.spyOn(fs.promises, 'readdir').mockResolvedValue([{ isFile: () => true, name: 'name' } as fs.Dirent]);
+
+    const createWriteStreamMock = vi.spyOn(fs, 'createWriteStream').mockReturnValue({
+      write: vi.fn(),
+      close: vi.fn(),
+    } as unknown as fs.WriteStream);
+    await containerRegistry.exportContainer('podman1', {
+      id: 'id',
+      name: 'name',
+      outputDirectory: 'dir',
+    });
+    expect(createWriteStreamMock).toBeCalledWith(path.join('dir', 'name (1)'), {
+      flags: 'w',
+    });
   });
 });

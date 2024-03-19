@@ -18,51 +18,55 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import * as fs from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import * as path from 'node:path';
+
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import { app } from 'electron';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { ContributionInfo } from '/@/plugin/api/contribution-info.js';
+import type { ContributionManager } from '/@/plugin/contribution-manager.js';
+import type { KubeGeneratorRegistry } from '/@/plugin/kube-generator-registry.js';
+import { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
+import { NavigationPage } from '/@/plugin/navigation/navigation-page.js';
+import type { WebviewRegistry } from '/@/plugin/webview/webview-registry.js';
+
+import { getBase64Image } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { WebviewInfo } from './api/webview-info.js';
+import type { AuthenticationImpl } from './authentication.js';
+import type { CliToolRegistry } from './cli-tool-registry.js';
+import type { ColorRegistry } from './color-registry.js';
 import type { CommandRegistry } from './command-registry.js';
 import type { ConfigurationRegistry } from './configuration-registry.js';
 import type { ContainerProviderRegistry } from './container-registry.js';
+import { Context } from './context/context.js';
+import type { CustomPickRegistry } from './custompick/custompick-registry.js';
+import type { DialogRegistry } from './dialog-registry.js';
+import type { Directories } from './directories.js';
 import type { ActivatedExtension, AnalyzedExtension, RequireCacheDict } from './extension-loader.js';
 import { ExtensionLoader } from './extension-loader.js';
 import type { FilesystemMonitoring } from './filesystem-monitoring.js';
+import type { IconRegistry } from './icon-registry.js';
+import type { ImageCheckerImpl } from './image-checker.js';
 import type { ImageRegistry } from './image-registry.js';
 import type { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
 import type { KubernetesClient } from './kubernetes-client.js';
 import type { MenuRegistry } from './menu-registry.js';
+import type { MessageBox } from './message-box.js';
+import type { NotificationRegistry } from './notification-registry.js';
+import type { OnboardingRegistry } from './onboarding-registry.js';
 import type { ProgressImpl } from './progress-impl.js';
 import type { ProviderRegistry } from './provider-registry.js';
 import type { Proxy } from './proxy.js';
 import type { StatusBarRegistry } from './statusbar/statusbar-registry.js';
-import type { TrayMenuRegistry } from './tray-menu-registry.js';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { ApiSenderType } from './api.js';
-import type { AuthenticationImpl } from './authentication.js';
-import type { MessageBox } from './message-box.js';
 import type { Telemetry } from './telemetry/telemetry.js';
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import type { IconRegistry } from './icon-registry.js';
-import type { Directories } from './directories.js';
-import type { CustomPickRegistry } from './custompick/custompick-registry.js';
-import type { ViewRegistry } from './view-registry.js';
-import { Context } from './context/context.js';
-import type { OnboardingRegistry } from './onboarding-registry.js';
-import { Exec } from './util/exec.js';
-import type { KubeGeneratorRegistry } from '/@/plugin/kube-generator-registry.js';
-import type { CliToolRegistry } from './cli-tool-registry.js';
-import type { NotificationRegistry } from './notification-registry.js';
-import type { ImageCheckerImpl } from './image-checker.js';
-import type { ContributionManager } from '/@/plugin/contribution-manager.js';
-import { NavigationPage } from '/@/plugin/navigation/navigation-page.js';
-import type { ContributionInfo } from '/@/plugin/api/contribution-info.js';
-import { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
-import type { WebviewRegistry } from '/@/plugin/webview/webview-registry.js';
-import { app } from 'electron';
-import type { WebviewInfo } from './api/webview-info.js';
-import { getBase64Image } from '../util.js';
+import type { TrayMenuRegistry } from './tray-menu-registry.js';
 import { Disposable } from './types/disposable.js';
-import type { ColorRegistry } from './color-registry.js';
-import type { DialogRegistry } from './dialog-registry.js';
+import { Exec } from './util/exec.js';
+import type { ViewRegistry } from './view-registry.js';
 
 class TestExtensionLoader extends ExtensionLoader {
   public async setupScanningDirectory(): Promise<void> {
@@ -77,11 +81,11 @@ class TestExtensionLoader extends ExtensionLoader {
     this.watchTimeout = timeout;
   }
 
-  getExtensionState() {
+  getExtensionState(): Map<string, string> {
     return this.extensionState;
   }
 
-  getExtensionStateErrors() {
+  getExtensionStateErrors(): Map<string, unknown> {
     return this.extensionStateErrors;
   }
 
@@ -143,6 +147,10 @@ const containerProviderRegistry: ContainerProviderRegistry = {
   listPods: vi.fn(),
   stopPod: vi.fn(),
   removePod: vi.fn(),
+  getContainerStats: vi.fn(),
+  stopContainerStats: vi.fn(),
+  listImages: vi.fn(),
+  listInfos: vi.fn(),
 } as unknown as ContainerProviderRegistry;
 
 const inputQuickPickRegistry: InputQuickPickRegistry = {} as unknown as InputQuickPickRegistry;
@@ -390,6 +398,7 @@ test('Verify extension error leads to failed state', async () => {
       removable: false,
       manifest: {},
       subscriptions: [],
+      readme: '',
       dispose: vi.fn(),
     },
     {
@@ -421,6 +430,7 @@ test('Verify extension activate with a long timeout is flagged as error', async 
       removable: false,
       manifest: {},
       subscriptions: [],
+      readme: '',
       dispose: vi.fn(),
     },
     {
@@ -755,12 +765,22 @@ describe('check loadRuntime', async () => {
 });
 
 describe('analyze extension and main', async () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
   test('check for extension with main entry', async () => {
     vi.mock('node:fs');
+    vi.mock('node:fs/promises');
 
     // mock fs.existsSync
     const fsExistsSyncMock = vi.spyOn(fs, 'existsSync');
     fsExistsSyncMock.mockReturnValue(true);
+
+    const readmeContent = 'This is my custom README';
+
+    // mock readFile
+    vi.mocked(readFile).mockResolvedValue(readmeContent);
 
     const fakeManifest = {
       publisher: 'fooPublisher',
@@ -777,6 +797,7 @@ describe('analyze extension and main', async () => {
     expect(extension).toBeDefined();
     expect(extension?.error).toBeDefined();
     expect(extension?.mainPath).toBe(path.resolve('/', 'fake', 'path', 'main-entry.js'));
+    expect(extension.readme).toBe(readmeContent);
     expect(extension?.id).toBe('fooPublisher.fooName');
   });
 
@@ -786,6 +807,8 @@ describe('analyze extension and main', async () => {
     // mock fs.existsSync
     const fsExistsSyncMock = vi.spyOn(fs, 'existsSync');
     fsExistsSyncMock.mockReturnValue(true);
+
+    vi.mocked(readFile).mockResolvedValue('empty');
 
     const fakeManifest = {
       publisher: 'fooPublisher',
@@ -889,6 +912,7 @@ test('Verify extension uri', async () => {
       removable: false,
       manifest: {},
       subscriptions: [],
+      readme: '',
       dispose: vi.fn(),
     },
     { activate: activateMethod },
@@ -921,7 +945,7 @@ describe('Navigation', async () => {
   test.each([
     {
       name: 'navigateToContainer valid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainer,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) => api.navigateToContainer,
       expected: {
         page: NavigationPage.CONTAINER,
         parameters: {
@@ -931,7 +955,8 @@ describe('Navigation', async () => {
     },
     {
       name: 'navigateToContainerLogs valid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerLogs,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerLogs,
       expected: {
         page: NavigationPage.CONTAINER_LOGS,
         parameters: {
@@ -941,7 +966,8 @@ describe('Navigation', async () => {
     },
     {
       name: 'navigateToContainerInspect valid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerInspect,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerInspect,
       expected: {
         page: NavigationPage.CONTAINER_INSPECT,
         parameters: {
@@ -951,7 +977,8 @@ describe('Navigation', async () => {
     },
     {
       name: 'navigateToContainerTerminal valid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerTerminal,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerTerminal,
       expected: {
         page: NavigationPage.CONTAINER_TERMINAL,
         parameters: {
@@ -987,19 +1014,22 @@ describe('Navigation', async () => {
   test.each([
     {
       name: 'navigateToContainer invalid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainer,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) => api.navigateToContainer,
     },
     {
       name: 'navigateToContainerLogs invalid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerLogs,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerLogs,
     },
     {
       name: 'navigateToContainerInspect invalid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerInspect,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerInspect,
     },
     {
       name: 'navigateToContainerTerminal invalid',
-      method: (api: typeof containerDesktopAPI.navigation) => api.navigateToContainerTerminal,
+      method: (api: typeof containerDesktopAPI.navigation): ((id: string) => Promise<void>) =>
+        api.navigateToContainerTerminal,
     },
   ])('$name', async ({ method }) => {
     const api = extensionLoader.createApi('path', {
@@ -1642,5 +1672,90 @@ describe('window', async () => {
 
     expect(dialogRegistry.saveDialog).toBeCalled();
     expect(uri?.fsPath).toContain('path-to-file1');
+  });
+});
+
+describe('containerEngine', async () => {
+  test('statsContainer ', async () => {
+    vi.mocked(containerProviderRegistry.getContainerStats).mockResolvedValue(99);
+    vi.mocked(containerProviderRegistry.stopContainerStats).mockResolvedValue(undefined);
+
+    const api = extensionLoader.createApi('/path', {});
+    expect(api).toBeDefined();
+
+    const disposable = await api.containerEngine.statsContainer('dummyEngineId', 'dummyContainerId', () => {});
+    expect(disposable).toBeDefined();
+    expect(disposable instanceof Disposable).toBeTruthy();
+    expect(containerProviderRegistry.getContainerStats).toHaveBeenCalledWith(
+      'dummyEngineId',
+      'dummyContainerId',
+      expect.anything(),
+    );
+
+    disposable.dispose();
+    await vi.waitUntil(() => {
+      expect(containerProviderRegistry.stopContainerStats).toHaveBeenCalledWith(99);
+      return true;
+    });
+  });
+
+  test('listImages without option ', async () => {
+    vi.mocked(containerProviderRegistry.listImages).mockResolvedValue([]);
+
+    const api = extensionLoader.createApi('/path', {});
+    expect(api).toBeDefined();
+
+    const images = await api.containerEngine.listImages();
+    expect(images.length).toBe(0);
+    expect(containerProviderRegistry.listImages).toHaveBeenCalledWith(undefined);
+  });
+
+  test('listImages with provider option', async () => {
+    vi.mocked(containerProviderRegistry.listImages).mockResolvedValue([]);
+
+    const api = extensionLoader.createApi('/path', {});
+    expect(api).toBeDefined();
+
+    const images = await api.containerEngine.listImages({
+      provider: {
+        name: 'dummyProvider',
+      } as unknown as containerDesktopAPI.ContainerProviderConnection,
+    });
+    expect(images.length).toBe(0);
+    expect(containerProviderRegistry.listImages).toHaveBeenCalledWith({
+      provider: {
+        name: 'dummyProvider',
+      },
+    });
+  });
+
+  test('listInfos without option', async () => {
+    vi.mocked(containerProviderRegistry.listInfos).mockResolvedValue([]);
+
+    const api = extensionLoader.createApi('/path', {});
+    expect(api).toBeDefined();
+
+    const infos = await api.containerEngine.listInfos();
+    expect(infos.length).toBe(0);
+    expect(containerProviderRegistry.listInfos).toHaveBeenCalledWith(undefined);
+  });
+
+  test('listInfos with provider option', async () => {
+    vi.mocked(containerProviderRegistry.listInfos).mockResolvedValue([]);
+
+    const api = extensionLoader.createApi('/path', {});
+    expect(api).toBeDefined();
+
+    const infos = await api.containerEngine.listInfos({
+      provider: {
+        name: 'dummyProvider',
+      } as unknown as containerDesktopAPI.ContainerProviderConnection,
+    });
+    expect(infos.length).toBe(0);
+    expect(containerProviderRegistry.listInfos).toHaveBeenCalledWith({
+      provider: {
+        name: 'dummyProvider',
+      },
+    });
   });
 });

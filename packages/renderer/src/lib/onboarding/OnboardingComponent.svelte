@@ -1,13 +1,15 @@
 <script lang="ts">
+import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import { onMount } from 'svelte';
+import Fa from 'svelte-fa';
+
 import { configurationProperties } from '/@/stores/configurationProperties';
 import { providerInfos } from '/@/stores/providers';
-import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import PreferencesConnectionCreationOrEditRendering from '../preferences/PreferencesConnectionCreationOrEditRendering.svelte';
+
 import type { OnboardingEmbeddedComponentType } from '../../../../main/src/plugin/api/onboarding';
-import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import Fa from 'svelte-fa';
+import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
+import PreferencesConnectionCreationOrEditRendering from '../preferences/PreferencesConnectionCreationOrEditRendering.svelte';
 
 export let component: OnboardingEmbeddedComponentType;
 export let extensionId: string;
@@ -60,7 +62,7 @@ onMount(() => {
       hideCloseButton="{true}" />
   {:else}
     <div aria-label="not supported warning" class="flex flex-row min-h-[500px] items-center justify-center">
-      <Fa size="18" class="flex text-amber-400 mr-3" icon="{faTriangleExclamation}" />
+      <Fa size="1.125x" class="flex text-amber-400 mr-3" icon="{faTriangleExclamation}" />
       <span>This extension does not provide a component of type "{component}"</span>
     </div>
   {/if}

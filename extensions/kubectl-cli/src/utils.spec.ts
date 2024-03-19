@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { expect, test, vi, vitest, describe } from 'vitest';
+import { promises } from 'node:fs';
+
+import { describe, expect, test, vi, vitest } from 'vitest';
+
 import { makeExecutable } from './utils';
-import { promises } from 'fs';
 
 vi.mock('@podman-desktop/api', async () => {
   return {

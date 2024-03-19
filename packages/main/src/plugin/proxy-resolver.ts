@@ -16,11 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as http from 'http';
-import * as https from 'https';
-import * as nodeurl from 'url';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import * as nodeurl from 'node:url';
+
 import type { HttpProxyAgentOptions, HttpsProxyAgentOptions } from 'hpagent';
 import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
+
 import type { Proxy } from './proxy.js';
 
 // Agents usage table
@@ -37,7 +39,7 @@ import type { Proxy } from './proxy.js';
 // ------------------------------------
 // Source - https://github.com/delvedor/hpagent/tree/main#usage
 
-function createProxyAgent(secure: boolean, proxyUrl: string) {
+function createProxyAgent(secure: boolean, proxyUrl: string): http.Agent | https.Agent {
   const options = {
     keepAlive: true,
     keepAliveMsecs: 1000,
@@ -68,13 +70,15 @@ export function getOptions(proxy: Proxy, secure: boolean): ProxyOptions {
   return options;
 }
 
-export function createHttpPatch(originals: typeof http | typeof https, proxy: Proxy) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createHttpPatch(originals: typeof http | typeof https, proxy: Proxy): any {
   return {
     get: patch(originals.get),
     request: patch(originals.request),
   };
 
-  function patch(original: typeof http.get) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function patch(original: typeof http.get): any {
     function patched(
       url?: string | nodeurl.URL | null,
       options?: http.RequestOptions | null,
@@ -133,7 +137,8 @@ export function createHttpPatch(originals: typeof http | typeof https, proxy: Pr
   }
 }
 
-export function createHttpPatchedModules(proxy: Proxy) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createHttpPatchedModules(proxy: Proxy): any {
   const res = {
     http: Object.assign({}, http, createHttpPatch(http, proxy)),
     https: Object.assign({}, https, createHttpPatch(https, proxy)),

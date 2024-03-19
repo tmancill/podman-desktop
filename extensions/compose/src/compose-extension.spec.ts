@@ -19,16 +19,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as fs from 'node:fs';
-import { resolve } from 'node:path';
-import type { Mock } from 'vitest';
-import { afterEach, beforeEach, test, expect, vi, describe } from 'vitest';
-import { ComposeExtension } from './compose-extension';
-import type { Detect } from './detect';
-import type { ComposeGitHubReleases } from './compose-github-releases';
-import * as extensionApi from '@podman-desktop/api';
 import { promises } from 'node:fs';
+import { resolve } from 'node:path';
+import * as path from 'node:path';
+
+import * as extensionApi from '@podman-desktop/api';
+import type { Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { ComposeExtension } from './compose-extension';
+import type { ComposeGitHubReleases } from './compose-github-releases';
 import type { ComposeWrapperGenerator } from './compose-wrapper-generator';
-import * as path from 'path';
+import type { Detect } from './detect';
 
 const extensionContext: extensionApi.ExtensionContext = {
   storagePath: '/fake/path',
@@ -95,7 +97,7 @@ vi.mock('@podman-desktop/api', () => {
     commands: {
       registerCommand: vi.fn().mockImplementation(() => {
         return {
-          dispose: () => {
+          dispose: (): void => {
             // do nothing
           },
         };
@@ -110,8 +112,8 @@ vi.mock('@podman-desktop/api', () => {
       showInformationMessage: vi.fn(),
     },
     env: {
-      createTelemetryLogger: () => {
-        return telemetryLogger;
+      createTelemetryLogger: (): extensionApi.TelemetryLogger => {
+        return telemetryLogger as unknown as extensionApi.TelemetryLogger;
       },
     },
   };
@@ -119,11 +121,11 @@ vi.mock('@podman-desktop/api', () => {
 
 // allows to call protected methods
 class TestComposeExtension extends ComposeExtension {
-  public publicNotifyOnChecks(firstCheck: boolean) {
+  public async publicNotifyOnChecks(firstCheck: boolean): Promise<void> {
     return super.notifyOnChecks(firstCheck);
   }
 
-  setCurrentInformation(value: string | undefined) {
+  setCurrentInformation(value: string | undefined): void {
     this.currentInformation = value;
   }
 }

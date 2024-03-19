@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,25 +17,38 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
+import type { KubernetesObject } from '@kubernetes/client-node';
 import { render, screen } from '@testing-library/svelte';
-import AppNavigation from './AppNavigation.svelte';
+import { readable } from 'svelte/store';
 import type { TinroRouteMeta } from 'tinro';
-import { kubernetesContexts } from './stores/kubernetes-contexts';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import * as kubeContextStore from '/@/stores/kubernetes-contexts-state';
+
+import AppNavigation from './AppNavigation.svelte';
 
 const eventsMock = vi.fn();
-const getConfigurationValueMock = vi.fn();
+
+vi.mock('/@/stores/kubernetes-contexts-state', async () => {
+  return {};
+});
 
 // fake the window object
 beforeAll(() => {
   (window as any).events = eventsMock;
-  (window as any).getConfigurationValue = getConfigurationValueMock;
 });
 
 test('Test rendering of the navigation bar with empty items', () => {
   const meta = {
     url: '/',
   } as unknown as TinroRouteMeta;
+
+  // mock no kubernetes resources
+  vi.mocked(kubeContextStore).kubernetesCurrentContextDeployments = readable<KubernetesObject[]>([]);
+  vi.mocked(kubeContextStore).kubernetesCurrentContextServices = readable<KubernetesObject[]>([]);
+  vi.mocked(kubeContextStore).kubernetesCurrentContextIngresses = readable<KubernetesObject[]>([]);
+  vi.mocked(kubeContextStore).kubernetesCurrentContextRoutes = readable<KubernetesObject[]>([]);
 
   render(AppNavigation, {
     meta,
@@ -62,74 +75,4 @@ test('Test rendering of the navigation bar with empty items', () => {
   expect(deployments).not.toBeInTheDocument();
   const services = screen.queryByRole('link', { name: 'Services' });
   expect(services).not.toBeInTheDocument();
-});
-
-test('Test Kubernetes experimental hidden with valid context', async () => {
-  kubernetesContexts.set([
-    {
-      name: 'context-name',
-      cluster: 'cluster-name',
-      user: 'user-name',
-      clusterInfo: {
-        name: 'cluster-name',
-        server: 'https://server-name',
-      },
-    },
-  ]);
-  getConfigurationValueMock.mockResolvedValue(false);
-
-  const meta = {
-    url: '/',
-  } as unknown as TinroRouteMeta;
-
-  render(AppNavigation, {
-    meta,
-    exitSettingsCallback: () => {},
-  });
-
-  const navigationBar = screen.getByRole('navigation', { name: 'AppNavigation' });
-  expect(navigationBar).toBeInTheDocument();
-
-  // wait 100ms for stores to initialize
-  await new Promise(resolve => setTimeout(resolve, 100));
-
-  const deployments = screen.queryByRole('link', { name: 'Deployments' });
-  expect(deployments).not.toBeInTheDocument();
-  const services = screen.queryByRole('link', { name: 'Services' });
-  expect(services).not.toBeInTheDocument();
-});
-
-test('Test Kubernetes experimental enablement', async () => {
-  kubernetesContexts.set([
-    {
-      name: 'context-name',
-      cluster: 'cluster-name',
-      user: 'user-name',
-      clusterInfo: {
-        name: 'cluster-name',
-        server: 'https://server-name',
-      },
-    },
-  ]);
-  getConfigurationValueMock.mockResolvedValue(true);
-
-  const meta = {
-    url: '/',
-  } as unknown as TinroRouteMeta;
-
-  render(AppNavigation, {
-    meta,
-    exitSettingsCallback: () => {},
-  });
-
-  const navigationBar = screen.getByRole('navigation', { name: 'AppNavigation' });
-  expect(navigationBar).toBeInTheDocument();
-
-  // wait 100ms for stores to initialize
-  await new Promise(resolve => setTimeout(resolve, 100));
-
-  const deployments = screen.getByRole('link', { name: 'Deployments' });
-  expect(deployments).toBeInTheDocument();
-  const services = screen.getByRole('link', { name: 'Services' });
-  expect(services).toBeInTheDocument();
 });

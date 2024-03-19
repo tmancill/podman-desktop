@@ -16,7 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as path from 'path';
+import * as path from 'node:path';
+
 import type * as api from '@podman-desktop/api';
 
 export interface ExtensionModule {
@@ -45,7 +46,7 @@ export class ModuleLoader {
     private _analyzedExtensions: Map<string, ExtensionModule>,
   ) {}
 
-  addOverride(lookup: Record<string, object | OverrideFunction>) {
+  addOverride(lookup: Record<string, object | OverrideFunction>): void {
     Object.keys(lookup).forEach(entry => {
       this._overrides.set(entry, lookup[entry]);
     });

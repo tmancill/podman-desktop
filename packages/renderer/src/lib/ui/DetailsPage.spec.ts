@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023, 2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeEach } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import DetailsPage from './DetailsPage.svelte';
-import { lastPage, currentPage } from '../../stores/breadcrumb';
+import userEvent from '@testing-library/user-event';
 import type { TinroBreadcrumb } from 'tinro';
 import { router } from 'tinro';
-import userEvent from '@testing-library/user-event';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { currentPage, lastPage } from '../../stores/breadcrumb';
+import DetailsPage from './DetailsPage.svelte';
 
 // mock the router
 vi.mock('tinro', () => {
@@ -87,7 +89,9 @@ test('Expect close link is defined', async () => {
 
   const closeElement = screen.getByTitle('Close');
   expect(closeElement).toBeInTheDocument();
-  expect(closeElement).toHaveAttribute('href', backPath);
+  await fireEvent.click(closeElement);
+
+  expect(router.goto).toHaveBeenCalledWith(backPath);
 });
 
 test('Expect Escape key closes', async () => {

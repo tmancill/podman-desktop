@@ -1,24 +1,25 @@
 <script lang="ts">
-import { runImageInfo } from '../../stores/run-image-store';
+import { faFolderOpen, faMinusCircle, faPlay, faPlusCircle } from '@fortawesome/free-solid-svg-icons';
+import { Input } from '@podman-desktop/ui-svelte';
 import { onMount } from 'svelte';
+import { router } from 'tinro';
+
+import { array2String } from '/@/lib/string/string.js';
+import Button from '/@/lib/ui/Button.svelte';
+
 import type { ContainerCreateOptions, HostConfig } from '../../../../main/src/plugin/api/container-info';
 import type { ImageInspectInfo } from '../../../../main/src/plugin/api/image-inspect-info';
-import FormPage from '../ui/FormPage.svelte';
-import type { ImageInfoUI } from './ImageInfoUI';
-import { faFolderOpen, faMinusCircle, faPlay, faPlusCircle, faXmark } from '@fortawesome/free-solid-svg-icons';
-import Fa from 'svelte-fa';
-import { router } from 'tinro';
-import Route from '../../Route.svelte';
 import type { NetworkInspectInfo } from '../../../../main/src/plugin/api/network-info';
-import type { ContainerInfoUI } from '../container/ContainerInfoUI';
-import { ContainerUtils } from '../container/container-utils';
+import Route from '../../Route.svelte';
 import { containersInfos } from '../../stores/containers';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
+import { runImageInfo } from '../../stores/run-image-store';
+import { ContainerUtils } from '../container/container-utils';
+import type { ContainerInfoUI } from '../container/ContainerInfoUI';
 import { splitSpacesHandlingDoubleQuotes } from '../string/string';
-import { array2String } from '/@/lib/string/string.js';
+import ErrorMessage from '../ui/ErrorMessage.svelte';
+import FormPage from '../ui/FormPage.svelte';
 import Tab from '../ui/Tab.svelte';
-import Button from '../ui/Button.svelte';
-import Input from '/@/lib/ui/Input.svelte';
+import type { ImageInfoUI } from './ImageInfoUI';
 
 interface PortInfo {
   port: string;
@@ -483,16 +484,6 @@ function deleteEnvFile(index: number) {
   environmentFiles = environmentFiles.filter((_, i) => i !== index);
 }
 
-function handleCleanValueEnvFile(
-  event: MouseEvent & {
-    currentTarget: EventTarget & HTMLButtonElement;
-  },
-  index: number,
-) {
-  environmentFiles[index] = '';
-  event.preventDefault();
-}
-
 function addHostContainerPorts() {
   hostContainerPortMappings = [
     ...hostContainerPortMappings,
@@ -512,10 +503,13 @@ function deleteHostContainerPorts(index: number) {
 
 async function browseFolders(index: number) {
   // need to show the dialog to open a folder and then we update the source of the given index
-  const result = await window.openFolderDialog('Select a directory to mount in the container');
+  const result = await window.openDialog({
+    title: 'Select a directory to mount in the container',
+    selectors: ['openDirectory'],
+  });
 
-  if (!result.canceled && result.filePaths.length === 1) {
-    volumeMounts[index].source = result.filePaths[0];
+  if (result?.length === 1) {
+    volumeMounts[index].source = result[0];
   }
 }
 
@@ -675,28 +669,22 @@ async function assertAllPortAreValid(): Promise<void> {
                 {#each volumeMounts as volumeMount, index}
                   <div class="flex flex-row justify-center items-center w-full py-1">
                     <Input bind:value="{volumeMount.source}" placeholder="Path on the host" class="ml-2" />
-                    <button
+                    <Button
+                      type="link"
                       title="Open dialog to select a directory"
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
-                      on:click="{() => browseFolders(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faFolderOpen}" />
-                    </button>
-                    <Input
-                      bind:value="{volumeMount.target}"
-                      placeholder="Path inside the container"
-                      class="ml-2 w-full" />
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      icon="{faFolderOpen}"
+                      on:click="{() => browseFolders(index)}" />
+                    <Input bind:value="{volumeMount.target}" placeholder="Path inside the container" class="ml-2" />
+                    <Button
+                      type="link"
                       hidden="{index === volumeMounts.length - 1}"
-                      on:click="{() => deleteVolumeMount(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteVolumeMount(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < volumeMounts.length - 1}"
-                      on:click="{addVolumeMount}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addVolumeMount}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
 
@@ -717,7 +705,7 @@ async function assertAllPortAreValid(): Promise<void> {
                   </div>
                 {/each}
 
-                <Button class="pt-3 pb-2" on:click="{addHostContainerPorts}" icon="{faPlusCircle}" type="link">
+                <Button on:click="{addHostContainerPorts}" icon="{faPlusCircle}" type="link">
                   Add custom port mapping
                 </Button>
                 <!-- Display the list of existing hostContainerPortMappings -->
@@ -729,18 +717,13 @@ async function assertAllPortAreValid(): Promise<void> {
                       aria-label="host port"
                       placeholder="Host Port"
                       error="{hostContainerPortMapping.hostPort.error}"
-                      class="w-full"
                       title="{hostContainerPortMapping.hostPort.error}" />
                     <Input
                       bind:value="{hostContainerPortMapping.containerPort}"
                       aria-label="container port"
                       placeholder="Container Port"
-                      class="ml-2 w-full" />
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
-                      on:click="{() => deleteHostContainerPorts(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
+                      class="ml-2" />
+                    <Button type="link" on:click="{() => deleteHostContainerPorts(index)}" icon="{faMinusCircle}" />
                   </div>
                 {/each}
                 <label for="modalEnvironmentVariables" class="pt-4 block mb-2 text-sm font-medium text-gray-400"
@@ -753,19 +736,17 @@ async function assertAllPortAreValid(): Promise<void> {
                     <Input
                       bind:value="{environmentVariable.value}"
                       placeholder="Value (leave blank for empty)"
-                      class="ml-2 w-full" />
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      class="ml-2" />
+                    <Button
+                      type="link"
                       hidden="{index === environmentVariables.length - 1}"
-                      on:click="{() => deleteEnvVariable(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteEnvVariable(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < environmentVariables.length - 1}"
-                      on:click="{addEnvVariable}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addEnvVariable}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
               </div>
@@ -777,37 +758,28 @@ async function assertAllPortAreValid(): Promise<void> {
                 <div class="flex flex-row justify-center items-center w-full py-1">
                   <div class="w-full flex">
                     <Input
-                      class="grow"
                       readonly
+                      clearable
                       placeholder="Environment file containing KEY=VALUE items"
                       bind:value="{environmentFile}"
                       aria-label="environmentFile.{index}" />
-                    <button
-                      class="relative cursor-pointer right-5"
-                      class:hidden="{!environmentFile}"
-                      aria-label="clear"
-                      on:click="{event => handleCleanValueEnvFile(event, index)}">
-                      <Fa icon="{faXmark}" />
-                    </button>
                     <Button
                       on:click="{() => selectEnvironmentFile(index)}"
                       id="filePath.{index}"
                       aria-label="button-select-env-file-{index}">Browse ...</Button>
                   </div>
-                  <button
-                    class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                  <Button
+                    type="link"
                     hidden="{index === environmentFiles.length - 1}"
                     aria-label="Delete env file at index {index}"
-                    on:click="{() => deleteEnvFile(index)}">
-                    <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                  </button>
-                  <button
-                    class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    on:click="{() => deleteEnvFile(index)}"
+                    icon="{faMinusCircle}" />
+                  <Button
+                    type="link"
                     hidden="{index < environmentFiles.length - 1}"
                     aria-label="Add env file after index {index}"
-                    on:click="{addEnvFile}">
-                    <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                  </button>
+                    on:click="{addEnvFile}"
+                    icon="{faPlusCircle}" />
                 </div>
               {/each}
             </Route>
@@ -915,18 +887,16 @@ async function assertAllPortAreValid(): Promise<void> {
                       placeholder="Enter a security option (Ex. seccomp=/path/to/profile.json)"
                       class="ml-2" />
 
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    <Button
+                      type="link"
                       hidden="{index === securityOpts.length - 1}"
-                      on:click="{() => deleteSecurityOpt(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteSecurityOpt(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < securityOpts.length - 1}"
-                      on:click="{addSecurityOpt}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addSecurityOpt}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
 
@@ -941,18 +911,16 @@ async function assertAllPortAreValid(): Promise<void> {
                   <div class="flex flex-row justify-center items-center w-full py-1">
                     <Input bind:value="{capAdd}" placeholder="Enter a kernel capability (Ex. SYS_ADMIN)" class="ml-4" />
 
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    <Button
+                      type="link"
                       hidden="{index === capAdds.length - 1}"
-                      on:click="{() => deleteCapAdd(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteCapAdd(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < capAdds.length - 1}"
-                      on:click="{addCapAdd}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addCapAdd}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
                 <label
@@ -967,18 +935,16 @@ async function assertAllPortAreValid(): Promise<void> {
                       placeholder="Enter a kernel capability (Ex. SYS_ADMIN)"
                       class="ml-4" />
 
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    <Button
+                      type="link"
                       hidden="{index === capDrops.length - 1}"
-                      on:click="{() => deleteCappDrop(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteCappDrop(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < capDrops.length - 1}"
-                      on:click="{addCapDrop}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addCapDrop}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
 
@@ -1008,41 +974,37 @@ async function assertAllPortAreValid(): Promise<void> {
                   <div class="flex flex-row justify-center items-center w-full py-1">
                     <Input bind:value="{dnsServer}" placeholder="IP Address" class="ml-2" />
 
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    <Button
+                      type="link"
                       hidden="{index === dnsServers.length - 1}"
-                      on:click="{() => deleteDnsServer(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteDnsServer(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < dnsServers.length - 1}"
-                      on:click="{addDnsServer}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addDnsServer}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
 
                 <label for="containerExtraHosts" class="pt-4 block mb-2 text-sm font-medium text-gray-400"
                   >Add extra hosts (appends to /etc/hosts file):</label>
-                <!-- Display the list of existing environment variables -->
+                <!-- Display the list of extra hosts -->
                 {#each extraHosts as extraHost, index}
                   <div class="flex flex-row justify-center items-center w-full py-1">
-                    <Input bind:value="{extraHost.host}" placeholder="Hostname" class="ml-2 w-full" />
+                    <Input bind:value="{extraHost.host}" placeholder="Hostname" class="ml-2" />
 
-                    <Input bind:value="{extraHost.ip}" placeholder="IP Address" class="ml-2 w-full" />
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                    <Input bind:value="{extraHost.ip}" placeholder="IP Address" class="ml-2" />
+                    <Button
+                      type="link"
                       hidden="{index === extraHosts.length - 1}"
-                      on:click="{() => deleteExtraHost(index)}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faMinusCircle}" />
-                    </button>
-                    <button
-                      class="ml-2 p-2 outline-none text-sm bg-charcoal-800 rounded-sm text-gray-700 placeholder-gray-700"
+                      on:click="{() => deleteExtraHost(index)}"
+                      icon="{faMinusCircle}" />
+                    <Button
+                      type="link"
                       hidden="{index < extraHosts.length - 1}"
-                      on:click="{addExtraHost}">
-                      <Fa class="h-4 w-4 text-xl" icon="{faPlusCircle}" />
-                    </button>
+                      on:click="{addExtraHost}"
+                      icon="{faPlusCircle}" />
                   </div>
                 {/each}
 

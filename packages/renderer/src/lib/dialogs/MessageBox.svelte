@@ -1,12 +1,15 @@
 <script lang="ts">
-import { onDestroy, onMount, tick } from 'svelte';
-import Fa from 'svelte-fa';
-import { faCircleQuestion, faCircle } from '@fortawesome/free-regular-svg-icons';
+import { faCircle, faCircleQuestion } from '@fortawesome/free-regular-svg-icons';
 import { faCircleExclamation, faInfo, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import type { MessageBoxOptions } from './messagebox-input';
-import Button from '../ui/Button.svelte';
+import { onDestroy, onMount } from 'svelte';
+import Fa from 'svelte-fa';
+
+import CloseButton from '/@/lib/ui/CloseButton.svelte';
+
 import type { ButtonType } from '../ui/Button';
+import Button from '../ui/Button.svelte';
 import { tabWithinParent } from './dialog-utils';
+import type { MessageBoxOptions } from './messagebox-input';
 
 let currentId = 0;
 let title: string;
@@ -20,7 +23,6 @@ let buttonOrder: number[];
 
 let display = false;
 
-let inputElement: HTMLInputElement | undefined = undefined;
 let messageBox: HTMLDivElement;
 
 const showMessageBoxCallback = (messageBoxParameter: unknown) => {
@@ -74,16 +76,6 @@ const showMessageBoxCallback = (messageBoxParameter: unknown) => {
   });
 
   display = true;
-
-  tick()
-    .then(() => {
-      if (display && inputElement) {
-        inputElement.focus();
-      }
-    })
-    .catch((error: unknown) => {
-      console.error('Unable to focus on input element', error);
-    });
 };
 
 onMount(() => {
@@ -158,11 +150,7 @@ function getButtonType(b: boolean): ButtonType {
         {/if}
         <h1 class="grow text-lg font-bold capitalize">{title}</h1>
 
-        <button
-          class="p-2 hover:text-gray-300 hover:bg-charcoal-500 rounded-full cursor-pointer"
-          on:click="{() => clickButton(cancelId >= 0 ? cancelId : undefined)}">
-          <i class="fas fa-times" aria-hidden="true"></i>
-        </button>
+        <CloseButton on:click="{() => clickButton(cancelId >= 0 ? cancelId : undefined)}" />
       </div>
 
       <div class="max-h-80 overflow-auto">

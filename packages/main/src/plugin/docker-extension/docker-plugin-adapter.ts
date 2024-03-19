@@ -1,11 +1,30 @@
+/**********************************************************************
+ * Copyright (C) 2023-2024 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ***********************************************************************/
+
+import { spawn } from 'node:child_process';
+import * as os from 'node:os';
+
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
 
-import * as os from 'node:os';
-import { spawn } from 'child_process';
-import type { ContributionManager } from '../contribution-manager.js';
-import type { ContainerProviderRegistry } from '../container-registry.js';
 import type { SimpleContainerInfo } from '../api/container-info.js';
+import type { ContainerProviderRegistry } from '../container-registry.js';
+import type { ContributionManager } from '../contribution-manager.js';
 
 export interface RawExecResult {
   cmd?: string;
@@ -38,7 +57,7 @@ export class DockerPluginAdapter {
     return [cmd, ...result];
   }
 
-  protected addExtraPathToEnv(extensionId: string, env: NodeJS.ProcessEnv) {
+  protected addExtraPathToEnv(extensionId: string, env: NodeJS.ProcessEnv): void {
     // add host path of the contribution
     const contributionPath = this.contributionManager.getExtensionPath(extensionId);
     if (contributionPath) {
@@ -105,10 +124,10 @@ export class DockerPluginAdapter {
       const fullCommandLine = [cmd, ...args];
 
       return new Promise(resolve => {
-        const onStdout = (data: Buffer) => {
+        const onStdout = (data: Buffer): void => {
           execResult.stdout += data.toString();
         };
-        const onStderr = (data: Buffer) => {
+        const onStderr = (data: Buffer): void => {
           execResult.stderr += data.toString();
         };
 
@@ -200,10 +219,10 @@ export class DockerPluginAdapter {
       // merge command and args
       const fullCommandLine = [cmd, ...args];
 
-      const onStdout = (data: Buffer) => {
+      const onStdout = (data: Buffer): void => {
         event.reply('docker-plugin-adapter:execWithOptions-callback-stdout', streamCallbackId, data);
       };
-      const onStderr = (data: Buffer) => {
+      const onStderr = (data: Buffer): void => {
         event.reply('docker-plugin-adapter:execWithOptions-callback-stderr', streamCallbackId, data);
       };
 
@@ -278,7 +297,7 @@ export class DockerPluginAdapter {
     });
   }
 
-  init() {
+  init(): void {
     ipcMain.handle(
       'docker-plugin-adapter:exec',
       async (

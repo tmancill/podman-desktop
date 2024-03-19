@@ -1,8 +1,10 @@
 <script lang="ts">
+import 'xterm/css/xterm.css';
+
+import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { onMount, onDestroy, createEventDispatcher } from 'svelte';
-import 'xterm/css/xterm.css';
+
 import { TerminalSettings } from '../../../../main/src/plugin/terminal-settings';
 
 export let terminal: Terminal;
@@ -12,7 +14,7 @@ let resizeHandler: () => void;
 
 const dispatch = createEventDispatcher<{ init: any }>();
 
-async function refreshTerminal() {
+async function refreshTerminal(): Promise<void> {
   // missing element, return
   if (!logsXtermDiv) {
     return;
@@ -34,7 +36,7 @@ async function refreshTerminal() {
   terminal.write('\x1b[?25l');
 
   // call fit addon each time we resize the window
-  resizeHandler = () => {
+  resizeHandler = (): void => {
     fitAddon.fit();
   };
   window.addEventListener('resize', resizeHandler);

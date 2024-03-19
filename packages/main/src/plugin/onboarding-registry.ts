@@ -17,12 +17,13 @@
  ***********************************************************************/
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import * as path from 'path';
-import type { Onboarding, OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
-import type { AnalyzedExtension } from './extension-loader.js';
-import type { ConfigurationRegistry } from './configuration-registry.js';
+import * as path from 'node:path';
+
 import { getBase64Image } from '../util.js';
+import type { Onboarding, OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
+import type { ConfigurationRegistry } from './configuration-registry.js';
 import type { Context } from './context/context.js';
+import type { AnalyzedExtension } from './extension-loader.js';
 import { Disposable } from './types/disposable.js';
 
 export class OnboardingRegistry {
@@ -54,13 +55,18 @@ export class OnboardingRegistry {
     this.checkIdsReadability(extension, onboarding);
     //TODO we need to check the onboarding has a valid schema. contains atleast a step and substep
     this.convertImages(extension, onboarding);
+
     return {
       ...onboarding,
       extension: extension.id,
+      name: extension.name,
+      displayName: extension.manifest?.displayName ?? extension.name,
+      description: extension.manifest?.description ?? '',
+      icon: onboarding.media?.path ?? '',
     };
   }
 
-  convertImages(extension: AnalyzedExtension, onboarding: Onboarding) {
+  convertImages(extension: AnalyzedExtension, onboarding: Onboarding): void {
     if (onboarding.media?.path) {
       const base64Image = getBase64Image(path.resolve(extension.path, onboarding.media.path));
       if (base64Image) {
@@ -150,8 +156,8 @@ export class OnboardingRegistry {
    *
    * In case of a rule not respected, a warning is displayed in the console.
    */
-  checkIdsReadability(extension: AnalyzedExtension, onboarding: Onboarding) {
-    const warn = (msg: string) => {
+  checkIdsReadability(extension: AnalyzedExtension, onboarding: Onboarding): void {
+    const warn = (msg: string): void => {
       console.warn(`[${extension.id}]: ${msg}`);
     };
     onboarding.steps.forEach(step => {

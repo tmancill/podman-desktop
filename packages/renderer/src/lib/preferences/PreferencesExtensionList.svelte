@@ -1,16 +1,17 @@
 <script lang="ts">
-import Fa from 'svelte-fa';
-import { faTrash, faPlay, faStop, faArrowCircleDown } from '@fortawesome/free-solid-svg-icons';
+import { faArrowCircleDown, faPlay, faStop, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { Input } from '@podman-desktop/ui-svelte';
 import { afterUpdate } from 'svelte';
-import { extensionInfos } from '../../stores/extensions';
+import Fa from 'svelte-fa';
+
 import type { ExtensionInfo } from '../../../../main/src/plugin/api/extension-info';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import SettingsPage from '../preferences/SettingsPage.svelte';
-import ConnectionStatus from '../ui/ConnectionStatus.svelte';
+import { extensionInfos } from '../../stores/extensions';
 import FeaturedExtensions from '../featured/FeaturedExtensions.svelte';
+import SettingsPage from '../preferences/SettingsPage.svelte';
 import Button from '../ui/Button.svelte';
+import ConnectionStatus from '../ui/ConnectionStatus.svelte';
+import ErrorMessage from '../ui/ErrorMessage.svelte';
 import ExtensionIcon from './ExtensionIcon.svelte';
-import Input from '../ui/Input.svelte';
 
 export let ociImage: string | undefined = undefined;
 
@@ -95,13 +96,11 @@ async function updateExtension(extension: ExtensionInfo, ociUri: string) {
             aria-label="OCI Image Name"
             bind:value="{ociImage}"
             placeholder="Name of the Image"
-            class="w-1/2"
             required />
 
           <Button
             on:click="{() => installExtensionFromImage()}"
             disabled="{ociImage === undefined || ociImage.trim() === ''}"
-            class="w-full"
             inProgress="{installInProgress}"
             icon="{faArrowCircleDown}">
             Install extension from the OCI image

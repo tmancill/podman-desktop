@@ -17,18 +17,19 @@
  ***********************************************************************/
 
 import type {
-  AuthenticationProvider,
-  AuthenticationSession,
-  AuthenticationSessionsChangeEvent,
   AuthenticationGetSessionOptions,
-  Event,
-  AuthenticationSessionAccountInformation,
+  AuthenticationProvider,
   AuthenticationProviderOptions,
+  AuthenticationSession,
+  AuthenticationSessionAccountInformation,
+  AuthenticationSessionsChangeEvent,
   Disposable,
+  Event,
   ProviderImages,
 } from '@podman-desktop/api';
-import { Emitter } from './events/emitter.js';
+
 import type { ApiSenderType } from './api.js';
+import { Emitter } from './events/emitter.js';
 
 /**
  * Structure to save authentication provider information
@@ -127,9 +128,10 @@ export class AuthenticationImpl {
       this.apiSender.send('authentication-provider-update', { id });
     });
     return {
-      dispose: () => {
+      dispose: (): void => {
         onDidChangeSessionDisposable.dispose();
         this._authenticationProviders.delete(id);
+        this.apiSender.send('authentication-provider-update', { id });
       },
     };
   }
@@ -245,7 +247,7 @@ export class AuthenticationImpl {
   }
 
   // called by the UI to indicate that the user has requested a sing-in
-  async executeSessionRequest(id: string) {
+  async executeSessionRequest(id: string): Promise<void> {
     const data = this._signInRequestsData.get(id);
     if (!data) {
       throw new Error(`Session request '${id}' is not found.`);

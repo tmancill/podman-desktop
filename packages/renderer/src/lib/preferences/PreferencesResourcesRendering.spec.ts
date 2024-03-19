@@ -17,17 +17,20 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeEach } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
-import PreferencesResourcesRendering from './PreferencesResourcesRendering.svelte';
-import { providerInfos } from '../../stores/providers';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 import userEvent from '@testing-library/user-event';
 import { router } from 'tinro';
-import { onboardingList } from '/@/stores/onboarding';
-import type { OnboardingInfo } from '../../../../main/src/plugin/api/onboarding';
+import { beforeEach, expect, test, vi } from 'vitest';
+
 import { configurationProperties } from '/@/stores/configurationProperties';
+import { onboardingList } from '/@/stores/onboarding';
+
+import type { OnboardingInfo } from '../../../../main/src/plugin/api/onboarding';
+import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 import { CONFIGURATION_DEFAULT_SCOPE } from '../../../../main/src/plugin/configuration-registry-constants';
+import { providerInfos } from '../../stores/providers';
+import PreferencesResourcesRendering from './PreferencesResourcesRendering.svelte';
 
 const providerInfo: ProviderInfo = {
   id: 'podman',
@@ -269,6 +272,9 @@ test('Expect to redirect to onboarding page if setup button is clicked', async (
     steps: [],
     title: 'onboarding',
     enablement: 'true',
+    name: 'foobar',
+    displayName: 'FooBar',
+    icon: 'data:image/png;base64,foobar',
   };
   onboardingList.set([onboarding]);
   render(PreferencesResourcesRendering, {});
@@ -292,6 +298,9 @@ test('Expect setup button to appear even if provider status is set to unknown an
     steps: [],
     title: 'onboarding',
     enablement: 'true',
+    name: 'foobar',
+    displayName: 'FooBar',
+    icon: 'data:image/png;base64,foobar',
   };
   onboardingList.set([onboarding]);
   render(PreferencesResourcesRendering, {});
@@ -333,6 +342,9 @@ test('Expect to redirect to extension preferences page if onboarding is disabled
     steps: [],
     title: 'onboarding',
     enablement: 'false',
+    name: 'foobar',
+    displayName: 'FooBar',
+    icon: 'data:image/png;base64,foobar',
   };
   onboardingList.set([onboarding]);
   render(PreferencesResourcesRendering, {});
@@ -359,6 +371,9 @@ test('Expect to not have cog icon button if provider has no active onboarding no
     steps: [],
     title: 'onboarding',
     enablement: 'false',
+    name: 'foobar',
+    displayName: 'FooBar',
+    icon: 'data:image/png;base64,foobar',
   };
   onboardingList.set([onboarding]);
   render(PreferencesResourcesRendering, {});
@@ -398,6 +413,9 @@ test('Expect to redirect to extension onboarding page if onboarding is enabled a
     steps: [],
     title: 'onboarding',
     enablement: 'true',
+    name: 'foobar',
+    displayName: 'FooBar',
+    icon: 'data:image/png;base64,foobar',
   };
   onboardingList.set([onboarding]);
   render(PreferencesResourcesRendering, {});

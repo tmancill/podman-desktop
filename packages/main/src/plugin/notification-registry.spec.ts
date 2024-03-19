@@ -17,10 +17,11 @@
  ***********************************************************************/
 
 import { beforeEach, expect, test, vi } from 'vitest';
+
 import type { ApiSenderType } from './api.js';
-import type { Disposable } from './types/disposable.js';
 import { NotificationRegistry } from './notification-registry.js';
 import type { TaskManager } from './task-manager.js';
+import type { Disposable } from './types/disposable.js';
 
 let notificationRegistry: NotificationRegistry;
 const extensionId = 'myextension.id';
@@ -40,7 +41,7 @@ vi.mock('electron', async () => {
   class Notification {
     constructor() {}
 
-    show() {}
+    show(): void {}
   }
 
   return {

@@ -16,21 +16,54 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import * as path from 'path';
-import * as fs from 'fs';
-import type { CommandRegistry } from './command-registry.js';
-import type { ExtensionError, ExtensionInfo, ExtensionUpdateInfo } from './api/extension-info.js';
-import AdmZip from 'adm-zip';
+import * as fs from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import * as path from 'node:path';
 
-import type { TrayMenuRegistry } from './tray-menu-registry.js';
-import { Disposable } from './types/disposable.js';
-import type { ProviderRegistry } from './provider-registry.js';
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import AdmZip from 'adm-zip';
+import { app, clipboard as electronClipboard } from 'electron';
+
+import type { ImageInspectInfo } from '/@/plugin/api/image-inspect-info.js';
+import type { ColorRegistry } from '/@/plugin/color-registry.js';
+import type { KubeGeneratorRegistry, KubernetesGeneratorProvider } from '/@/plugin/kube-generator-registry.js';
+import type { MenuRegistry } from '/@/plugin/menu-registry.js';
+import type { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
+import type { WebviewRegistry } from '/@/plugin/webview/webview-registry.js';
+
+import { securityRestrictionCurrentHandler } from '../security-restrictions-handler.js';
+import { getBase64Image, isLinux, isMac, isWindows } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { ExtensionError, ExtensionInfo, ExtensionUpdateInfo } from './api/extension-info.js';
+import type { PodInfo } from './api/pod-info.js';
+import type { AuthenticationImpl } from './authentication.js';
+import { CancellationTokenSource } from './cancellation-token.js';
+import type { CliToolRegistry } from './cli-tool-registry.js';
+import type { CommandRegistry } from './command-registry.js';
 import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
+import type { ContainerProviderRegistry } from './container-registry.js';
+import type { Context } from './context/context.js';
+import type { CustomPickRegistry } from './custompick/custompick-registry.js';
+import type { DialogRegistry } from './dialog-registry.js';
+import type { Directories } from './directories.js';
+import { Emitter } from './events/emitter.js';
+import { ExtensionLoaderSettings } from './extension-loader-settings.js';
+import type { FilesystemMonitoring } from './filesystem-monitoring.js';
+import type { IconRegistry } from './icon-registry.js';
+import type { ImageCheckerImpl } from './image-checker.js';
 import type { ImageRegistry } from './image-registry.js';
+import type { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
+import { InputBoxValidationSeverity, QuickPickItemKind } from './input-quickpick/input-quickpick-registry.js';
+import type { KubernetesClient } from './kubernetes-client.js';
 import type { MessageBox } from './message-box.js';
+import { ModuleLoader } from './module-loader.js';
+import type { NotificationRegistry } from './notification-registry.js';
+import type { OnboardingRegistry } from './onboarding-registry.js';
 import type { ProgressImpl } from './progress-impl.js';
 import { ProgressLocation } from './progress-impl.js';
+import type { ProviderRegistry } from './provider-registry.js';
+import type { Proxy } from './proxy.js';
+import { createHttpPatchedModules } from './proxy-resolver.js';
 import {
   StatusBarAlignLeft,
   StatusBarAlignRight,
@@ -38,44 +71,13 @@ import {
   StatusBarItemImpl,
 } from './statusbar/statusbar-item.js';
 import type { StatusBarRegistry } from './statusbar/statusbar-registry.js';
-import type { FilesystemMonitoring } from './filesystem-monitoring.js';
-import { Uri } from './types/uri.js';
-import type { KubernetesClient } from './kubernetes-client.js';
-import type { Proxy } from './proxy.js';
-import type { ContainerProviderRegistry } from './container-registry.js';
-import type { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
-import { InputBoxValidationSeverity, QuickPickItemKind } from './input-quickpick/input-quickpick-registry.js';
-import type { MenuRegistry } from '/@/plugin/menu-registry.js';
-import { Emitter } from './events/emitter.js';
-import { CancellationTokenSource } from './cancellation-token.js';
-import type { ApiSenderType } from './api.js';
-import type { AuthenticationImpl } from './authentication.js';
 import type { Telemetry } from './telemetry/telemetry.js';
+import type { TrayMenuRegistry } from './tray-menu-registry.js';
+import { Disposable } from './types/disposable.js';
 import { TelemetryTrustedValue } from './types/telemetry.js';
-import { app, clipboard as electronClipboard } from 'electron';
-import { securityRestrictionCurrentHandler } from '../security-restrictions-handler.js';
-import type { IconRegistry } from './icon-registry.js';
-import type { Directories } from './directories.js';
-import { getBase64Image, isLinux, isMac, isWindows } from '../util.js';
-import type { CustomPickRegistry } from './custompick/custompick-registry.js';
+import { Uri } from './types/uri.js';
 import type { Exec } from './util/exec.js';
-import type { ProviderContainerConnectionInfo, ProviderKubernetesConnectionInfo } from './api/provider-info.js';
 import type { ViewRegistry } from './view-registry.js';
-import type { Context } from './context/context.js';
-import type { OnboardingRegistry } from './onboarding-registry.js';
-import { createHttpPatchedModules } from './proxy-resolver.js';
-import { ModuleLoader } from './module-loader.js';
-import { ExtensionLoaderSettings } from './extension-loader-settings.js';
-import type { KubeGeneratorRegistry, KubernetesGeneratorProvider } from '/@/plugin/kube-generator-registry.js';
-import type { CliToolRegistry } from './cli-tool-registry.js';
-import type { NotificationRegistry } from './notification-registry.js';
-import type { ImageCheckerImpl } from './image-checker.js';
-import type { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
-import type { WebviewRegistry } from '/@/plugin/webview/webview-registry.js';
-import type { ImageInspectInfo } from '/@/plugin/api/image-inspect-info.js';
-import type { PodInfo } from './api/pod-info.js';
-import type { ColorRegistry } from '/@/plugin/color-registry.js';
-import type { DialogRegistry } from './dialog-registry.js';
 
 /**
  * Handle the loading of an extension
@@ -92,6 +94,8 @@ export interface AnalyzedExtension {
   mainPath?: string;
   api: typeof containerDesktopAPI;
   removable: boolean;
+
+  readme: string;
 
   update?: {
     version: string;
@@ -179,7 +183,7 @@ export class ExtensionLoader {
     this.pluginsDirectory = directories.getPluginsDirectory();
     this.pluginsScanDirectory = directories.getPluginsScanDirectory();
     this.extensionsStorageDirectory = directories.getExtensionsStorageDirectory();
-    this.moduleLoader = new ModuleLoader(require('module'), this.analyzedExtensions);
+    this.moduleLoader = new ModuleLoader(require('node:module'), this.analyzedExtensions);
   }
 
   mapError(err: unknown): ExtensionError | undefined {
@@ -207,6 +211,7 @@ export class ExtensionLoader {
       path: extension.path,
       removable: extension.removable,
       update: extension.update,
+      readme: extension.readme,
       icon: extension.manifest.icon ? this.updateImage(extension.manifest.icon, extension.path) : undefined,
     }));
   }
@@ -290,7 +295,7 @@ export class ExtensionLoader {
     }
   }
 
-  async start() {
+  async start(): Promise<void> {
     // Scan the plugins-scanning directory
     await this.setupScanningDirectory();
 
@@ -352,6 +357,7 @@ export class ExtensionLoader {
         name: '<unknown>',
         path: extensionPath,
         manifest: undefined,
+        readme: '',
         api: <typeof containerDesktopAPI>{},
         removable,
         subscriptions: [],
@@ -372,12 +378,20 @@ export class ExtensionLoader {
     const api = this.createApi(extensionPath, manifest);
 
     const disposables: Disposable[] = [];
+
+    // is there a README.md file in the extension folder ?
+    let readme = '';
+    if (fs.existsSync(path.resolve(extensionPath, 'README.md'))) {
+      readme = await readFile(path.resolve(extensionPath, 'README.md'), 'utf8');
+    }
+
     const analyzedExtension: AnalyzedExtension = {
       id: `${manifest.publisher}.${manifest.name}`,
       name: manifest.name,
       manifest,
       path: extensionPath,
       mainPath: manifest.main ? path.resolve(extensionPath, manifest.main) : undefined,
+      readme,
       api,
       removable,
       subscriptions: disposables,
@@ -442,7 +456,7 @@ export class ExtensionLoader {
     allExtensions: AnalyzedExtension[],
     explored: Map<string, boolean>,
     sorted: AnalyzedExtension[],
-  ) {
+  ): void {
     // flasg the node as explored
     explored.set(analyzedExtension.id, true);
 
@@ -725,7 +739,7 @@ export class ExtensionLoader {
       },
       getProviderLifecycleContext(
         providerId: string,
-        providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+        providerConnectionInfo: containerDesktopAPI.ContainerProviderConnection,
       ): containerDesktopAPI.LifecycleContext {
         return providerRegistry.getMatchingProviderLifecycleContextByProviderId(providerId, providerConnectionInfo);
       },
@@ -963,8 +977,8 @@ export class ExtensionLoader {
       ) {
         return containerProviderRegistry.buildImage(context, eventCollect, options);
       },
-      listImages(): Promise<containerDesktopAPI.ImageInfo[]> {
-        return containerProviderRegistry.listImages();
+      listImages(options?: containerDesktopAPI.ListImagesOptions): Promise<containerDesktopAPI.ImageInfo[]> {
+        return containerProviderRegistry.listImages(options);
       },
       saveImage(engineId: string, id: string, filename: string) {
         return containerProviderRegistry.saveImage(engineId, id, filename);
@@ -995,6 +1009,9 @@ export class ExtensionLoader {
       },
       info(engineId: string): Promise<containerDesktopAPI.ContainerEngineInfo> {
         return containerProviderRegistry.info(engineId);
+      },
+      listInfos(options?: containerDesktopAPI.ListInfosOptions): Promise<containerDesktopAPI.ContainerEngineInfo[]> {
+        return containerProviderRegistry.listInfos(options);
       },
       onEvent: (listener, thisArg, disposables) => {
         return containerProviderRegistry.onEvent(listener, thisArg, disposables);
@@ -1040,6 +1057,18 @@ export class ExtensionLoader {
       },
       startPod(engineId: string, podId: string): Promise<void> {
         return containerProviderRegistry.startPod(engineId, podId);
+      },
+      async statsContainer(
+        engineId: string,
+        containerId: string,
+        callback: (stats: containerDesktopAPI.ContainerStatsInfo) => void,
+      ): Promise<Disposable> {
+        const identifier = await containerProviderRegistry.getContainerStats(engineId, containerId, callback);
+        return Disposable.create(() => {
+          containerProviderRegistry.stopContainerStats(identifier).catch((err: unknown): void => {
+            console.error('Something went wrong while trying to stop container stats', err);
+          });
+        });
       },
     };
 
@@ -1099,10 +1128,10 @@ export class ExtensionLoader {
       },
       get clipboard(): containerDesktopAPI.Clipboard {
         return {
-          readText: async () => {
+          readText: async (): Promise<string> => {
             return electronClipboard.readText();
           },
-          writeText: async value => {
+          writeText: async (value): Promise<void> => {
             return electronClipboard.writeText(value);
           },
         };
@@ -1408,6 +1437,7 @@ export class ExtensionLoader {
     await Promise.all(
       Array.from(this.activatedExtensions.keys()).map(extensionId => this.deactivateExtension(extensionId)),
     );
+    this.kubernetesClient.dispose();
   }
 
   async startExtension(extensionId: string): Promise<void> {

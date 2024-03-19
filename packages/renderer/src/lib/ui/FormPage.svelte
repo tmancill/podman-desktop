@@ -1,8 +1,11 @@
 <script lang="ts">
-import { lastPage, currentPage } from '../../stores/breadcrumb';
 import { router } from 'tinro';
-import Link from './Link.svelte';
+
+import CloseButton from '/@/lib/ui/CloseButton.svelte';
+
+import { currentPage, lastPage } from '../../stores/breadcrumb';
 import LinearProgress from './LinearProgress.svelte';
+import Link from './Link.svelte';
 
 export let title: string;
 export let showBreadcrumb = true;
@@ -31,9 +34,7 @@ function handleKeydown(e: KeyboardEvent) {
             >{$lastPage.name}</Link>
           <div class="mx-2">&gt;</div>
           <div class="grow font-extralight" aria-label="name">{$currentPage.name}</div>
-          <a href="{$lastPage.path}" title="Close" class="justify-self-end text-gray-900">
-            <i class="fas fa-times" aria-hidden="true"></i>
-          </a>
+          <CloseButton href="{$lastPage.path}" class="justify-self-end" />
         </div>
       {/if}
       <div class="flex flex-row items-center pt-1">
@@ -50,9 +51,7 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
           {/if}
           {#if !showBreadcrumb}
-            <a href="{$lastPage.path}" title="Close" class="text-gray-900">
-              <i class="fas fa-times" aria-hidden="true"></i>
-            </a>
+            <CloseButton href="{$lastPage.path}" />
           {/if}
         </div>
       </div>

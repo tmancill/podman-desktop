@@ -16,14 +16,15 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as extensionApi from '@podman-desktop/api';
-import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
+import * as extensionApi from '@podman-desktop/api';
 import { configuration, ProgressLocation } from '@podman-desktop/api';
-import { getLimactl } from './limactl';
+
 import { ImageHandler } from './image-handler';
+import { getLimactl } from './limactl';
 
 type limaProviderType = 'docker' | 'podman' | 'kubernetes';
 
@@ -31,17 +32,27 @@ const LIMA_MOVE_IMAGE_COMMAND = 'lima.image.move';
 
 const imageHandler = new ImageHandler();
 
+function prettyInstanceName(instanceName: string): string {
+  let name;
+  if (instanceName === 'default') {
+    name = 'Lima';
+  } else {
+    name = `Lima ${instanceName}`;
+  }
+  return name;
+}
+
 function registerProvider(
   extensionContext: extensionApi.ExtensionContext,
   provider: extensionApi.Provider,
   providerType: limaProviderType,
   providerPath: string,
+  instanceName: string,
 ): void {
   let providerState: extensionApi.ProviderConnectionStatus = 'unknown';
-  const instanceName: string = configuration.getConfiguration('lima').get('name') || providerType;
   if (providerType === 'podman' || providerType === 'docker') {
     const connection: extensionApi.ContainerProviderConnection = {
-      name: 'Lima',
+      name: prettyInstanceName(instanceName),
       type: providerType,
       status: () => providerState,
       endpoint: {
@@ -54,7 +65,7 @@ function registerProvider(
     extensionContext.subscriptions.push(disposable);
   } else if (providerType === 'kubernetes') {
     const connection: extensionApi.KubernetesProviderConnection = {
-      name: 'Lima',
+      name: prettyInstanceName(instanceName),
       status: () => providerState,
       endpoint: {
         apiURL: 'https://localhost:6443',
@@ -81,9 +92,10 @@ function registerProvider(
 }
 
 export async function activate(extensionContext: extensionApi.ExtensionContext): Promise<void> {
-  const engineType = configuration.getConfiguration('lima').get('type') || 'podman';
-  const instanceName = configuration.getConfiguration('lima').get('name') || engineType;
-  const socketName = configuration.getConfiguration('lima').get('socket') || engineType + '.sock';
+  const engineType: string = configuration.getConfiguration('lima').get('type') || 'podman';
+  const instanceName: string = configuration.getConfiguration('lima').get('name') || engineType;
+  const socketName: string = configuration.getConfiguration('lima').get('socket') || engineType + '.sock';
+
   const limaHome = 'LIMA_HOME' in process.env ? process.env['LIMA_HOME'] : os.homedir() + '/.lima';
   const socketPath = path.resolve(limaHome, instanceName + '/sock/' + socketName);
   const configPath = path.resolve(limaHome, instanceName + '/copied-from-guest/kubeconfig.yaml');
@@ -109,7 +121,7 @@ export async function activate(extensionContext: extensionApi.ExtensionContext):
   if (socketName !== 'kubernetes.sock') {
     const providerType = engineType === 'kubernetes' ? 'docker' : (engineType as limaProviderType);
     if (fs.existsSync(socketPath)) {
-      registerProvider(extensionContext, provider, providerType, socketPath);
+      registerProvider(extensionContext, provider, providerType, socketPath, instanceName);
     } else {
       console.debug(`Could not find socket at ${socketPath}`);
     }
@@ -118,7 +130,7 @@ export async function activate(extensionContext: extensionApi.ExtensionContext):
   if (engineType === 'kubernetes') {
     const providerType = engineType as limaProviderType;
     if (fs.existsSync(configPath)) {
-      registerProvider(extensionContext, provider, providerType, configPath);
+      registerProvider(extensionContext, provider, providerType, configPath, instanceName);
     } else {
       console.debug(`Could not find config at ${configPath}`);
     }

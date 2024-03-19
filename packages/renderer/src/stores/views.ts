@@ -18,6 +18,7 @@
 
 import type { Writable } from 'svelte/store';
 import { writable } from 'svelte/store';
+
 import type { ViewInfoUI } from '../../../main/src/plugin/api/view-info';
 import { EventStore } from './event-store';
 
@@ -51,6 +52,6 @@ export const viewsEventStore = new EventStore<ViewInfoUI[]>(
 );
 const viewsEventStoreInfo = viewsEventStore.setup();
 
-export const fetchViews = async () => {
+export const fetchViews = async (): Promise<void> => {
   await viewsEventStoreInfo.fetch();
 };

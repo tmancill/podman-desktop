@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { IconDefinition } from '@fortawesome/free-solid-svg-icons';
+
 import type { ILoadingStatus } from '../preferences/Util';
 import LoadingIcon from './LoadingIcon.svelte';
 import Tooltip from './Tooltip.svelte';
@@ -23,7 +24,7 @@ $: disable =
 
 $: loading = state?.inProgress && action === state?.action;
 
-function getStyleByState(state: ILoadingStatus | undefined, action: string) {
+function getStyleByState(state: ILoadingStatus | undefined, action: string): string {
   if (
     (action === 'start' && (state?.inProgress || state?.status !== 'stopped')) ||
     ((action === 'stop' || action === 'restart') && (state?.inProgress || state?.status !== 'started')) ||

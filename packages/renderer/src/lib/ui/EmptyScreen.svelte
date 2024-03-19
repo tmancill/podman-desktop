@@ -1,7 +1,7 @@
 <script lang="ts">
-import Fa from 'svelte-fa';
 import { faPaste } from '@fortawesome/free-solid-svg-icons';
 import { onMount } from 'svelte';
+import Fa from 'svelte-fa';
 
 export let icon: any;
 export let title = 'No title';
@@ -39,7 +39,7 @@ let copyTextDivElement: HTMLDivElement;
     <div class="flex justify-center text-gray-700 py-2">
       {#if processed}
         {#if fontAwesomeIcon}
-          <Fa icon="{icon}" size="55" />
+          <Fa icon="{icon}" size="4x" />
         {:else}
           <svelte:component this="{icon}" size="55" solid="{false}" />
         {/if}

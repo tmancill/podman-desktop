@@ -277,7 +277,7 @@ declare module '@podman-desktop/api' {
     portmappings?: PodCreatePortOptions[];
     labels?: { [key: string]: string };
     // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
-    provider?: ProviderContainerConnectionInfo | ContainerProviderConnection;
+    provider?: ContainerProviderConnection;
   }
 
   export interface KubernetesProviderConnectionEndpoint {
@@ -465,8 +465,27 @@ declare module '@podman-desktop/api' {
   }
 
   export namespace commands {
+    /**
+     * Define a command, to be executed later, either by calling {@link commands.executeCommand} or by referencing its name in the `command` field of a {@link StatusBarItem}.
+     *
+     * @param command the name of the command. The name must be unique over all extensions. It is recommended to prefix this name with the name of the extension, to avoid conflicts with commands from other extensions.
+     * @param callback the command to execute
+     * @param thisArg The value of `this` provided for the call to callback
+     * @returns A disposable that unregisters this command when being disposed
+     * @throws if a command with the same name is already registered.
+     */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     export function registerCommand(command: string, callback: (...args: any[]) => any, thisArg?: any): Disposable;
+    /**
+     * Execute a command, previously registered with {@link commands.registerCommand}
+     *
+     * @param command the name used for registering the command
+     * @param rest the parameters to pass to the command
+     * @param T the type of the value returned by the command
+     * @returns the value returned by the command
+     * @throws if the command is not registered
+     * @throws if the command throws an exception
+     */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     export function executeCommand<T = unknown>(command: string, ...rest: any[]): PromiseLike<T>;
   }
@@ -520,13 +539,13 @@ declare module '@podman-desktop/api' {
      * If no context is found it throws an error
      *
      * @param providerId the provider id
-     * @param providerConnectionInfo the connection to retrieve the lifecycle context for
+     * @param containerProviderConnection the connection to retrieve the lifecycle context for
      * @returns the lifecycle context
      * @throws if no provider with the id has been found or there is no context associate to it.
      */
     export function getProviderLifecycleContext(
       providerId: string,
-      providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+      containerProviderConnection: ContainerProviderConnection,
     ): LifecycleContext;
   }
 
@@ -827,7 +846,7 @@ declare module '@podman-desktop/api' {
     /**
      * A description of the field to be show (Markdown format)
      */
-    markdownDescription?;
+    markdownDescription?: string;
 
     /**
      * An optional string to show as placeholder in the input box to guide the user what to type.
@@ -1113,6 +1132,8 @@ declare module '@podman-desktop/api' {
     dispose(): void;
   }
 
+  type NotificationType = 'info' | 'warn' | 'error';
+
   export interface NotificationOptions {
     /**
      * A title for the notification, which will be shown at the top of the notification window when it is shown.
@@ -1192,7 +1213,7 @@ declare module '@podman-desktop/api' {
      */
     enabled: boolean;
     /**
-     * The identifier of a command to run on click.
+     * The identifier of a command, previously registered with {@link commands.registerCommand}, to run on click.
      */
     command?: string;
     /**
@@ -1913,6 +1934,13 @@ declare module '@podman-desktop/api' {
     IPv4Address: string;
     IPv6Address: string;
   }
+
+  interface IPAM {
+    Driver: string;
+    Config?: Array<{ [key: string]: string }>;
+    Options?: { [key: string]: string };
+  }
+
   export interface NetworkInspectInfo {
     engineId: string;
     engineName: string;
@@ -2050,6 +2078,7 @@ declare module '@podman-desktop/api' {
     Type: MountType;
     ReadOnly?: boolean;
     Consistency?: MountConsistency;
+    Mode?: string;
     BindOptions?: {
       Propagation: MountPropagation;
     };
@@ -2068,6 +2097,14 @@ declare module '@podman-desktop/api' {
   }
 
   type MountConfig = MountSettings[];
+
+  interface DeviceRequest {
+    Driver?: string;
+    Count?: number;
+    DeviceIDs?: string[];
+    Capabilities?: string[][];
+    Options?: { [key: string]: string };
+  }
 
   interface HostConfig {
     AutoRemove?: boolean;
@@ -2142,6 +2179,46 @@ declare module '@podman-desktop/api' {
     CpuRealtimeRuntime?: number;
   }
 
+  /**
+   * HealthCheckResults describes the results/logs from a healthcheck
+   */
+  export interface HealthCheckResults {
+    /**
+     * Status is starting, healthy or unhealthy
+     */
+    Status: string;
+    /**
+     * FailingStreak is the number of consecutive failed healthchecks
+     */
+    FailingStreak: number;
+    /**
+     * Log describes healthcheck attempts and results
+     */
+    Log: HealthCheckLog[];
+  }
+
+  /**
+   * HealthCheckLog describes the results of a single healthcheck
+   */
+  export interface HealthCheckLog {
+    /**
+     * Start time as string
+     */
+    Start: string;
+    /**
+     * End time as a string
+     */
+    End: string;
+    /**
+     * Exitcode is 0 or 1
+     */
+    ExitCode: number;
+    /**
+     *  Output is the stdout/stderr from the healthcheck command
+     */
+    Output: string;
+  }
+
   export interface ContainerInspectInfo {
     engineId: string;
     engineName: string;
@@ -2161,16 +2238,7 @@ declare module '@podman-desktop/api' {
       Error: string;
       StartedAt: string;
       FinishedAt: string;
-      Health?: {
-        Status: string;
-        FailingStreak: number;
-        Log: Array<{
-          Start: string;
-          End: string;
-          ExitCode: number;
-          Output: string;
-        }>;
-      };
+      Health?: HealthCheckResults;
     };
     Image: string;
     ResolvConfPath: string;
@@ -2303,35 +2371,66 @@ declare module '@podman-desktop/api' {
     errorDetails?: { message?: string };
   }
 
+  /**
+   * Configuration options for defining a healthcheck for a container.
+   * To get health check result you can use {@link containerEngine.inspectContainer} and inside the obtained {@link ContainerInspectInfo} you can access the `Status.Health` property containing a {@link HealthCheckResults}.
+   */
   interface HealthConfig {
     /**
-     * The test to perform. Possible values are:
+     * The test to perform.
      *
-     * - ```[]``` inherit healthcheck from image or parent image
-     * - ```["NONE"]``` disable healthcheck
-     * - ```["CMD", args...]``` exec arguments directly
-     * - ```["CMD-SHELL", command]``` run command with system's default shell
+     * @example
+     * // Inherit healthcheck from image
+     * Test?: [];
+     *
+     * @example
+     * // Disable healthcheck
+     * Test?: ["NONE"];
+     *
+     * @example
+     * // Execute command in host system
+     * Test?: ["CMD", "curl", "http://localhost"];
+     *
+     * @example
+     * // Podman will execute the command inside the target container and wait for either a "0" or "failure  exit" code.
+     * Test?: ["CMD-SHELL", "curl http://localhost || exit 1"];
      */
     Test?: string[];
 
     /**
      * The time to wait between checks in nanoseconds. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set interval to 1 second
+     * Interval?: 1000000000;
      */
     Interval?: number;
 
     /**
      * The time to wait before considering the check to have hung. It should be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set timeout to 5 seconds
+     * Timeout?: 5000000000;
      */
     Timeout?: number;
 
     /**
      * Start period for the container to initialize before starting health-retries countdown in nanoseconds. It should
      * be 0 or at least 1000000 (1 ms). 0 means inherit.
+     *
+     * @example
+     * // Set start period to 2 seconds
+     * StartPeriod?: 2000000000;
      */
     StartPeriod?: number;
 
     /**
      * The number of consecutive failures needed to consider a container as unhealthy. 0 means inherit.
+     *
+     * @example
+     * // Set retries to 3
+     * Retries?: 3;
      */
     Retries?: number;
   }
@@ -2407,8 +2506,8 @@ declare module '@podman-desktop/api' {
      * aliases, container short ID, and hostname.
      *
      * These DNS names are non-fully qualified but can contain several dots. You can get fully qualified DNS names by
-     * appending ```.<network-name>```. For instance, if container name is ```my.ctr``` and the network is named
-     * ```testnet```, ```DNSNames``` will contain ```my.ctr``` and the FQDN will be ```my.ctr.testnet```.
+     * appending `.<network-name>`. For instance, if container name is `my.ctr` and the network is named
+     * `testnet`, `DNSNames` will contain `my.ctr` and the FQDN will be `my.ctr.testnet`.
      */
     DNSNames?: string[];
   }
@@ -2434,6 +2533,7 @@ declare module '@podman-desktop/api' {
       Mode: string;
       RW: boolean;
       Propagation: string;
+      Options?: string[];
     }>;
   }
 
@@ -2446,11 +2546,11 @@ declare module '@podman-desktop/api' {
     /**
      *  Default: ""
      *
-     * Platform in the format ```os[/arch[/variant]]``` used for image lookup.
+     * Platform in the format `os[/arch[/variant]]` used for image lookup.
      *
-     * When specified, the daemon checks if the requested image is present in the local image cache with the given OS and Architecture, and otherwise returns a ```404``` status.
+     * When specified, the daemon checks if the requested image is present in the local image cache with the given OS and Architecture, and otherwise returns a `404` status.
      *
-     * If the option is not set, the host's native OS and Architecture are used to look up the image in the image cache. However, if no platform is passed and the given image does exist in the local image cache, but its OS or architecture does not match, the container is created with the available image, and a warning is added to the ```Warnings``` field in the response, for example;
+     * If the option is not set, the host's native OS and Architecture are used to look up the image in the image cache. However, if no platform is passed and the given image does exist in the local image cache, but its OS or architecture does not match, the container is created with the available image, and a warning is added to the `Warnings` field in the response, for example;
      *
      * ```
      * WARNING: The requested image's platform (linux/arm64/v8) does not
@@ -2559,12 +2659,12 @@ declare module '@podman-desktop/api' {
     start?: boolean;
 
     /**
-     * A test to perform to check that the container is healthy.
+     * A test to perform to check that the container is healthy. See {@link HealthConfig} for usage details
      */
     HealthCheck?: HealthConfig;
 
     /**
-     *  Default: ```false```
+     *  Default: `false`
      *
      * Command is already escaped (Windows only)
      */
@@ -2591,7 +2691,7 @@ declare module '@podman-desktop/api' {
     MacAddress?: string;
 
     /**
-     * ```ONBUILD``` metadata that were defined in the image's ```Dockerfile```.
+     * `ONBUILD` metadata that were defined in the image's `Dockerfile`.
      */
     OnBuild?: string[];
 
@@ -2601,18 +2701,23 @@ declare module '@podman-desktop/api' {
     StopSignal?: string;
 
     /**
-     *  Default: ```10```
+     *  Default: `10`
      *
      * Timeout to stop a container in seconds.
      */
     StopTimeout?: number;
 
     /**
-     * Shell for when ```RUN```, ```CMD```, and ```ENTRYPOINT``` uses a shell.
+     * Shell for when `RUN`, `CMD`, and `ENTRYPOINT` uses a shell.
      */
     Shell?: string[];
 
     NetworkConfig?: NetworkingConfig;
+
+    /**
+     * Pod where to create the container in
+     */
+    pod?: string;
   }
 
   /**
@@ -2629,6 +2734,130 @@ declare module '@podman-desktop/api' {
     id: string;
     viewType: string;
     title: string;
+  }
+
+  export interface PidsStats {
+    current?: number;
+    limit?: number;
+  }
+
+  export interface BlkioStatEntry {
+    major: number;
+    minor: number;
+    op: string;
+    value: number;
+  }
+
+  export interface BlkioStats {
+    io_service_bytes_recursive: BlkioStatEntry[];
+    io_serviced_recursive: BlkioStatEntry[];
+    io_queue_recursive: BlkioStatEntry[];
+    io_service_time_recursive: BlkioStatEntry[];
+    io_wait_time_recursive: BlkioStatEntry[];
+    io_merged_recursive: BlkioStatEntry[];
+    io_time_recursive: BlkioStatEntry[];
+    sectors_recursive: BlkioStatEntry[];
+  }
+
+  export interface StorageStats {
+    read_count_normalized?: number;
+    read_size_bytes?: number;
+    write_count_normalized?: number;
+    write_size_bytes?: number;
+  }
+
+  export interface NetworkStats {
+    [name: string]: {
+      rx_bytes: number;
+      rx_dropped: number;
+      rx_errors: number;
+      rx_packets: number;
+      tx_bytes: number;
+      tx_dropped: number;
+      tx_errors: number;
+      tx_packets: number;
+      endpoint_id?: string; // not used on linux
+      instance_id?: string; // not used on linux
+    };
+  }
+
+  export interface MemoryStats {
+    // Linux Memory Stats
+    stats: {
+      total_pgmajfault: number;
+      cache: number;
+      mapped_file: number;
+      total_inactive_file: number;
+      pgpgout: number;
+      rss: number;
+      total_mapped_file: number;
+      writeback: number;
+      unevictable: number;
+      pgpgin: number;
+      total_unevictable: number;
+      pgmajfault: number;
+      total_rss: number;
+      total_rss_huge: number;
+      total_writeback: number;
+      total_inactive_anon: number;
+      rss_huge: number;
+      hierarchical_memory_limit: number;
+      total_pgfault: number;
+      total_active_file: number;
+      active_anon: number;
+      total_active_anon: number;
+      total_pgpgout: number;
+      total_cache: number;
+      inactive_anon: number;
+      active_file: number;
+      pgfault: number;
+      inactive_file: number;
+      total_pgpgin: number;
+    };
+    max_usage: number;
+    usage: number;
+    failcnt: number;
+    limit: number;
+
+    // Windows Memory Stats
+    commitbytes?: number;
+    commitpeakbytes?: number;
+    privateworkingset?: number;
+  }
+
+  export interface CPUUsage {
+    percpu_usage: number[];
+    usage_in_usermode: number;
+    total_usage: number;
+    usage_in_kernelmode: number;
+  }
+
+  export interface ThrottlingData {
+    periods: number;
+    throttled_periods: number;
+    throttled_time: number;
+  }
+
+  export interface CPUStats {
+    cpu_usage: CPUUsage;
+    system_cpu_usage: number;
+    online_cpus: number;
+    throttling_data: ThrottlingData;
+  }
+
+  export interface ContainerStatsInfo {
+    engineId: string;
+    engineName: string;
+    read: string;
+    preread: string;
+    pids_stats?: PidsStats;
+    blkio_stats?: BlkioStats;
+    num_procs: number;
+    storage_stats?: StorageStats;
+    networks: NetworkStats;
+    memory_stats: MemoryStats;
+    cpu_stats: CPUStats;
+    precpu_stats: CPUStats;
   }
 
   export interface BuildImageOptions {
@@ -2650,7 +2879,7 @@ declare module '@podman-desktop/api' {
     /**
      * Set the provider to use, if not we will try select the first one available (sorted in favor of Podman)
      */
-    provider?: ProviderContainerConnectionInfo | containerDesktopAPI.ContainerProviderConnection;
+    provider?: ContainerProviderConnection;
 
     /**
      * The abort controller for running the build image operation
@@ -2734,15 +2963,15 @@ declare module '@podman-desktop/api' {
 
     /**
      * JSON map of string pairs for build-time variables. Users pass these values at build-time. Docker uses the
-     * buildargs as the environment context for commands run via the ```Dockerfile``` RUN instruction, or for variable
-     * expansion in other ```Dockerfilev``` instructions. This is not meant for passing secret values.
-     * For example, the build arg ```FOO=bar``` would become ```{"FOO":"bar"}``` in JSON. This would result in the query
-     * parameter ```buildargs={"FOO":"bar"}```. Note that ```{"FOO":"bar"}``` should be URI component encoded.
+     * buildargs as the environment context for commands run via the `Dockerfile` RUN instruction, or for variable
+     * expansion in other `Dockerfilev` instructions. This is not meant for passing secret values.
+     * For example, the build arg `FOO=bar` would become `{"FOO":"bar"}` in JSON. This would result in the query
+     * parameter `buildargs={"FOO":"bar"}`. Note that `{"FOO":"bar"}` should be URI component encoded.
      */
     buildargs?: { [key: string]: string };
 
     /**
-     * Size of ```/dev/shm``` in bytes. The size must be greater than 0. If omitted the system uses 64MB.
+     * Size of `/dev/shm` in bytes. The size must be greater than 0. If omitted the system uses 64MB.
      */
     shmsize?: number;
 
@@ -2757,8 +2986,8 @@ declare module '@podman-desktop/api' {
     labels?: { [key: string]: string };
 
     /**
-     * Sets the networking mode for the run commands during build. Supported standard values are: ```bridge```,
-     * ```host```, ```none```, and ```container:<name|id>```. Any other value is taken as a custom network's name or ID
+     * Sets the networking mode for the run commands during build. Supported standard values are: `bridge`,
+     * `host`, `none`, and `container:<name|id>`. Any other value is taken as a custom network's name or ID
      * to which this container should connect to.
      */
     networkmode?: string;
@@ -2785,6 +3014,15 @@ declare module '@podman-desktop/api' {
     nocache?: boolean;
   }
 
+  export interface ListImagesOptions {
+    /**
+     * The provider we want to list the images. If not provided, will return all container images across all container engines.
+     *
+     * @defaultValue undefined
+     */
+    provider?: ContainerProviderConnection;
+  }
+
   export interface NetworkCreateOptions {
     Name: string;
   }
@@ -2793,12 +3031,45 @@ declare module '@podman-desktop/api' {
     Id: string;
   }
 
+  /**
+   * Resources information about a container engine
+   */
   interface ContainerEngineInfo {
+    /**
+     * unique id identifying the container engine
+     */
+    engineId: string;
+    /**
+     * name of the container engine
+     */
+    engineName: string;
+    /**
+     * engine type, either 'podman' or 'docker'
+     */
+    engineType: 'podman' | 'docker';
+    /**
+     * number of CPUs available for the container engine
+     */
     cpus?: number;
+    /**
+     * Percentage of idle CPUs (for Podman engines only)
+     */
     cpuIdle?: number;
+    /**
+     * Quantity of memory available for the container engine
+     */
     memory?: number;
+    /**
+     * Quantity of memory used by the container engine (for Podman engines only)
+     */
     memoryUsed?: number;
+    /**
+     * Quantity of disk space available for the container engine (for Podman engines only)
+     */
     diskSize?: number;
+    /**
+     * Quantity of disk space used by the container engine (for Podman engines only)
+     */
     diskUsed?: number;
   }
 
@@ -2829,12 +3100,12 @@ declare module '@podman-desktop/api' {
     // name of the volume to create
     Name: string;
     // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
-    provider?: ProviderContainerConnectionInfo | containerDesktopAPI.ContainerProviderConnection;
+    provider?: ContainerProviderConnection;
   }
 
   export interface VolumeDeleteOptions {
     // Set the provider to use, if not we will try select the first one available (sorted in favor of Podman).
-    provider?: ProviderContainerConnectionInfo | containerDesktopAPI.ContainerProviderConnection;
+    provider?: ContainerProviderConnection;
   }
 
   export interface VolumeCreateResponseInfo {
@@ -2845,6 +3116,15 @@ declare module '@podman-desktop/api' {
     Status?: { [key: string]: string };
     Labels: { [label: string]: string };
     Scope: string;
+  }
+
+  export interface ListInfosOptions {
+    /**
+     * The provider we want to list the infos. If not provided, will return info for all engines.
+     *
+     * @defaultValue undefined
+     */
+    provider?: ContainerProviderConnection;
   }
 
   /**
@@ -2901,6 +3181,32 @@ declare module '@podman-desktop/api' {
     ): Promise<void>;
 
     /**
+     * Get the streamed stats of a running container.
+     *
+     * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
+     * @param id the id or name of the container on this engine, obtained from the result of {@link containerEngine.listContainers} or as the result of {@link containerEngine.createContainer}
+     * @param callback the function called when container stats info are emitted.
+     *
+     * @return A Promise resolving a {@link Disposable} that unregister the callback when called.
+     *
+     * @example
+     * Here is a usage example
+     * ```ts
+     * const disposable = await statsContainer('engineId', 'containerId', (stats: ContainerStatsInfo): void => {
+     *  console.log('CPU Usage', stats.cpu_stats.cpu_usage.total_usage);
+     * });
+     *
+     * // When no longer needed
+     * disposable.dispose();
+     * ```
+     */
+    export function statsContainer(
+      engineId: string,
+      id: string,
+      callback: (stats: ContainerStatsInfo) => void,
+    ): Promise<Disposable>;
+
+    /**
      * Stop an existing container
      *
      * @param engineId the id of the engine managing the container, obtained from the result of {@link containerEngine.listContainers}
@@ -2927,7 +3233,7 @@ declare module '@podman-desktop/api' {
       context: string,
       eventCollect: (eventName: 'stream' | 'error' | 'finish', data: string) => void,
       options?: BuildImageOptions,
-    );
+    ): Promise<unknown>;
 
     /**
      * Save on disk a tarball containing the image and its metadata.
@@ -2939,11 +3245,23 @@ declare module '@podman-desktop/api' {
     export function saveImage(engineId: string, id: string, filename: string): Promise<void>;
 
     /**
-     * List the container images across all container engines. Only images from a final layer (no children) are returned.
+     * List the container images. Only images from a final layer (no children) are returned.
      *
-     * @return A promise resolving to an array of images information. This method returns a subset of the available information for images. To get the complete description of a specific image, you can use the {@link containerEngine.getImageInspect} method.
+     * @param options optional options for listing images
+     * @returns A promise resolving to an array of images information. This method returns a subset of the available information for images. To get the complete description of a specific image, you can use the {@link containerEngine.getImageInspect} method.
+     *
+     * @example
+     * // Example 1: List all container images when no specific provider is provided.
+     * const images = await listImages();
+     * console.log(images);
+     *
+     * @example
+     * // Example 2: List container images for a specific provider.
+     * const provider = provider.getContainerConnections().find(connection => connection.connection.status() === 'started');
+     * const images = await listImages({ provider: provider.connection });
+     * console.log(images);
      */
-    export function listImages(): Promise<ImageInfo[]>;
+    export function listImages(options?: ListImagesOptions): Promise<ImageInfo[]>;
 
     /**
      * Tag an image so that it becomes part of a repository
@@ -3003,6 +3321,25 @@ declare module '@podman-desktop/api' {
     export function getImageInspect(engineId: string, id: string): Promise<ImageInspectInfo>;
 
     export function info(engineId: string): Promise<ContainerEngineInfo>;
+
+    /**
+     * List the engines information.
+     *
+     * @param options optional options for listing information
+     * @returns A promise resolving to an array of engine information.
+     *
+     * @example
+     * // Example 1: List all engine information when no specific provider is provided.
+     * const infos = await listInfos();
+     * console.log(infos);
+     *
+     * @example
+     * // Example 2: List information for a specific provider.
+     * const provider = provider.getContainerConnections().find(connection => connection.connection.status() === 'started');
+     * const info = await listInfos({ provider: provider.connection });
+     * console.log(info);
+     */
+    export function listInfos(options?: ListInfosOptions): Promise<ContainerEngineInfo[]>;
     export const onEvent: Event<ContainerJSONEvent>;
 
     export function listNetworks(): Promise<NetworkInspectInfo[]>;

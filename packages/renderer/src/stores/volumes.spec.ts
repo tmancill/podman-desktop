@@ -21,13 +21,14 @@
 import { get } from 'svelte/store';
 import type { Mock } from 'vitest';
 import { beforeAll, expect, test, vi } from 'vitest';
+
 import type { VolumeInspectInfo } from '../../../main/src/plugin/api/volume-info';
 import { fetchVolumesWithData, volumeListInfos, volumesEventStore } from './volumes';
 
 // first, path window object
 const callbacks = new Map<string, any>();
 const eventEmitter = {
-  receive: (message: string, callback: any) => {
+  receive: (message: string, callback: any): void => {
     callbacks.set(message, callback);
   },
 };

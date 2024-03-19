@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023,2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,17 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect, vi, beforeAll } from 'vitest';
+
+import type { KubernetesObject, V1Service } from '@kubernetes/client-node';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { writable } from 'svelte/store';
+import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import { lastPage } from '/@/stores/breadcrumb';
+import * as kubeContextStore from '/@/stores/kubernetes-contexts-state';
 
 import ServiceDetails from './ServiceDetails.svelte';
-
-import { router } from 'tinro';
-import { lastPage } from '/@/stores/breadcrumb';
-import { services } from '/@/stores/services';
-import type { V1Service } from '@kubernetes/client-node';
 
 const kubernetesDeleteServiceMock = vi.fn();
 
@@ -36,6 +38,12 @@ const service: V1Service = {
   },
   status: {},
 };
+
+vi.mock('/@/stores/kubernetes-contexts-state', async () => {
+  return {
+    kubernetesCurrentContextServices: vi.fn(),
+  };
+});
 
 beforeAll(() => {
   (window as any).kubernetesDeleteService = kubernetesDeleteServiceMock;
@@ -48,7 +56,10 @@ test('Expect redirect to previous page if service is deleted', async () => {
   showMessageBoxMock.mockResolvedValue({ response: 0 });
 
   const routerGotoSpy = vi.spyOn(router, 'goto');
-  services.set([service]);
+
+  // mock object store
+  const services = writable<KubernetesObject[]>([service]);
+  vi.mocked(kubeContextStore).kubernetesCurrentContextServices = services;
 
   // remove service from the store when we call delete
   kubernetesDeleteServiceMock.mockImplementation(() => {

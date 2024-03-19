@@ -1,7 +1,8 @@
 <script lang="ts">
 import { faFileLines, faScroll } from '@fortawesome/free-solid-svg-icons';
-import Button from '/@/lib/ui/Button.svelte';
 import Fa from 'svelte-fa';
+
+import Button from '/@/lib/ui/Button.svelte';
 
 let logs: string[] = [];
 
@@ -17,7 +18,7 @@ async function saveLogsAsZip() {
 
 <div class="flex flex-col w-full m-4 bg-charcoal-600 p-4 rounded-lg">
   <div class="flex flex-row align-middle items-center w-full">
-    <Fa size="30" class="pr-3 text-gray-700" icon="{faFileLines}" />
+    <Fa size="1.875x" class="pr-3 text-gray-700" icon="{faFileLines}" />
     <div class="text-xl">Gather Log Files</div>
     <div class="flex flex-1 justify-end"></div>
   </div>

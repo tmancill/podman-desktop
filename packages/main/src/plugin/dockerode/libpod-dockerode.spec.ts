@@ -19,10 +19,12 @@
 /* eslint-disable no-null/no-null */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { beforeAll, expect, test } from 'vitest';
-import { type LibPod, LibpodDockerode } from '/@/plugin/dockerode/libpod-dockerode.js';
 import Dockerode from 'dockerode';
 import nock from 'nock';
+import { beforeAll, expect, test } from 'vitest';
+
+import { type LibPod, LibpodDockerode } from '/@/plugin/dockerode/libpod-dockerode.js';
+
 import podmanInfo from '../../../tests/resources/data/plugin/podman-info.json';
 
 beforeAll(() => {
@@ -152,7 +154,7 @@ test('Check attach API', async () => {
 
   // patch libpod to not wait for the test as websocket is not supported by nock
   const originalBuildRequest = libPod.modem.buildRequest;
-  libPod.modem.buildRequest = function (options: unknown, context: any, data: unknown, callback: unknown) {
+  libPod.modem.buildRequest = function (options: unknown, context: any, data: unknown, callback: unknown): void {
     context.openStdin = false;
     return originalBuildRequest.call(this, options, context, data, callback);
   };

@@ -1,12 +1,14 @@
 <script lang="ts">
-import type { ButtonType } from './Button';
 import { onMount } from 'svelte';
 import Fa from 'svelte-fa';
+
+import type { ButtonType } from './Button';
 import Spinner from './Spinner.svelte';
 
 export let title: string | undefined = undefined;
 export let inProgress = false;
 export let disabled = false;
+export let hidden = false;
 export let type: ButtonType = 'primary';
 export let icon: any = undefined;
 export let selected: boolean | undefined = undefined;
@@ -14,7 +16,8 @@ export let selected: boolean | undefined = undefined;
 $: if (selected !== undefined && type !== 'tab') {
   console.error('property selected can be used with type=tab only');
 }
-export let padding: string = type !== 'tab' ? 'px-4 py-[5px]' : 'px-4 pb-1';
+export let padding: string =
+  'px-4 ' + (type === 'tab' ? 'pb-1' : type === 'secondary' ? 'py-[4px]' : type === 'danger' ? 'py-[3px]' : 'py-[5px]');
 
 let iconType: string | undefined = undefined;
 
@@ -29,8 +32,10 @@ onMount(() => {
 let classes = '';
 $: {
   if (disabled || inProgress) {
-    if (type === 'primary' || type === 'secondary') {
+    if (type === 'primary') {
       classes = 'bg-charcoal-50';
+    } else if (type === 'secondary') {
+      classes = 'border-[1px] border-charcoal-50 bg-charcoal-50';
     } else if (type === 'danger') {
       classes = 'border-2 border-gray-700 bg-charcoal-800';
     } else {
@@ -65,9 +70,12 @@ $: {
   title="{title}"
   aria-label="{$$props['aria-label']}"
   on:click
-  disabled="{disabled || inProgress}">
+  disabled="{disabled || inProgress}"
+  hidden="{hidden}">
   {#if icon}
-    <div class="flex flex-row p-0 m-0 bg-transparent justify-center items-center space-x-[4px]">
+    <div
+      class="flex flex-row p-0 m-0 bg-transparent justify-center items-center space-x-[4px]"
+      class:py-[3px]="{!$$slots.default}">
       {#if inProgress}
         <Spinner size="1em" />
       {:else if iconType === 'fa'}

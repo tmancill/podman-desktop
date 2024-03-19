@@ -17,42 +17,45 @@
  ***********************************************************************/
 
 import type {
+  AuditRequestItems,
+  AuditResult,
+  CancellationToken,
   ContainerProviderConnection,
+  KubernetesProviderConnection,
+  Logger,
   Provider,
   ProviderAutostart,
+  ProviderCleanup,
+  ProviderCleanupAction,
+  ProviderCleanupExecuteOptions,
+  ProviderConnectionStatus,
+  ProviderContainerConnection,
   ProviderDetectionCheck,
+  ProviderEvent,
+  ProviderInformation,
   ProviderInstallation,
   ProviderLifecycle,
   ProviderOptions,
   ProviderStatus,
   ProviderUpdate,
-  ProviderEvent,
-  UnregisterContainerConnectionEvent,
   RegisterContainerConnectionEvent,
-  KubernetesProviderConnection,
-  UnregisterKubernetesConnectionEvent,
   RegisterKubernetesConnectionEvent,
-  Logger,
-  ProviderInformation,
-  ProviderContainerConnection,
-  CancellationToken,
+  UnregisterContainerConnectionEvent,
+  UnregisterKubernetesConnectionEvent,
   UpdateContainerConnectionEvent,
   UpdateKubernetesConnectionEvent,
-  ProviderConnectionStatus,
-  AuditResult,
-  AuditRequestItems,
-  ProviderCleanup,
-  ProviderCleanupAction,
-  ProviderCleanupExecuteOptions,
 } from '@podman-desktop/api';
+
+import type { ApiSenderType } from './api.js';
 import type {
-  ProviderContainerConnectionInfo,
-  ProviderInfo,
-  ProviderKubernetesConnectionInfo,
   LifecycleMethod,
   PreflightChecksCallback,
   ProviderCleanupActionInfo,
+  ProviderContainerConnectionInfo,
+  ProviderInfo,
+  ProviderKubernetesConnectionInfo,
 } from './api/provider-info.js';
+import type { AutostartEngine } from './autostart-engine.js';
 import type { ContainerProviderRegistry } from './container-registry.js';
 import type { Event } from './events/emitter.js';
 import { Emitter } from './events/emitter.js';
@@ -60,8 +63,6 @@ import { LifecycleContextImpl, LoggerImpl } from './lifecycle-context.js';
 import { ProviderImpl } from './provider-impl.js';
 import type { Telemetry } from './telemetry/telemetry.js';
 import { Disposable } from './types/disposable.js';
-import type { ApiSenderType } from './api.js';
-import type { AutostartEngine } from './autostart-engine.js';
 
 export type ProviderEventListener = (name: string, providerInfo: ProviderInfo) => void;
 export type ProviderLifecycleListener = (
@@ -246,7 +247,7 @@ export class ProviderRegistry {
     });
   }
 
-  registerAutostartEngine(engine: AutostartEngine) {
+  registerAutostartEngine(engine: AutostartEngine): void {
     this.autostartEngine = engine;
   }
 
@@ -789,7 +790,10 @@ export class ProviderRegistry {
 
   getMatchingConnectionLifecycleContext(
     internalId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerContainerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): LifecycleContextImpl {
     const connection = this.getMatchingConnectionFromProvider(internalId, providerContainerConnectionInfo);
 
@@ -812,7 +816,10 @@ export class ProviderRegistry {
 
   getMatchingProviderLifecycleContextByProviderId(
     providerId: string,
-    providerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): LifecycleContextImpl {
     const internalId = this.getMatchingProviderInternalId(providerId);
     return this.getMatchingConnectionLifecycleContext(internalId, providerConnectionInfo);
@@ -883,7 +890,7 @@ export class ProviderRegistry {
   // helper method
   protected getMatchingContainerConnectionFromProvider(
     internalProviderId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo,
+    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ContainerProviderConnection,
   ): ContainerProviderConnection {
     // grab the correct provider
     const provider = this.getMatchingProvider(internalProviderId);
@@ -921,7 +928,10 @@ export class ProviderRegistry {
 
   getMatchingConnectionFromProvider(
     internalProviderId: string,
-    providerContainerConnectionInfo: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
+    providerContainerConnectionInfo:
+      | ProviderContainerConnectionInfo
+      | ProviderKubernetesConnectionInfo
+      | ContainerProviderConnection,
   ): ContainerProviderConnection | KubernetesProviderConnection {
     if (this.isProviderContainerConnection(providerContainerConnectionInfo)) {
       return this.getMatchingContainerConnectionFromProvider(internalProviderId, providerContainerConnectionInfo);
@@ -931,8 +941,8 @@ export class ProviderRegistry {
   }
 
   isProviderContainerConnection(
-    connection: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo,
-  ): connection is ProviderContainerConnectionInfo {
+    connection: ProviderContainerConnectionInfo | ProviderKubernetesConnectionInfo | ContainerProviderConnection,
+  ): connection is ProviderContainerConnectionInfo | ContainerProviderConnection {
     return (connection as ProviderContainerConnectionInfo).endpoint.socketPath !== undefined;
   }
 
@@ -1112,7 +1122,7 @@ export class ProviderRegistry {
   onDidRegisterContainerConnectionCallback(
     provider: ProviderImpl,
     containerProviderConnection: ContainerProviderConnection,
-  ) {
+  ): void {
     this.connectionLifecycleContexts.set(containerProviderConnection, new LifecycleContextImpl());
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
@@ -1128,7 +1138,7 @@ export class ProviderRegistry {
   onDidRegisterKubernetesConnectionCallback(
     provider: ProviderImpl,
     kubernetesProviderConnection: KubernetesProviderConnection,
-  ) {
+  ): void {
     this.connectionLifecycleContexts.set(kubernetesProviderConnection, new LifecycleContextImpl());
     this.apiSender.send('provider-register-kubernetes-connection', { name: kubernetesProviderConnection.name });
     this._onDidRegisterKubernetesConnection.fire({ providerId: provider.id });
@@ -1137,7 +1147,7 @@ export class ProviderRegistry {
   onDidChangeContainerProviderConnectionStatus(
     provider: ProviderImpl,
     containerConnection: ContainerProviderConnection,
-  ) {
+  ): void {
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
       listener(
@@ -1148,7 +1158,10 @@ export class ProviderRegistry {
     });
   }
 
-  onDidUnregisterContainerConnectionCallback(provider: ProviderImpl, containerConnection: ContainerProviderConnection) {
+  onDidUnregisterContainerConnectionCallback(
+    provider: ProviderImpl,
+    containerConnection: ContainerProviderConnection,
+  ): void {
     // notify listeners
     this.containerConnectionLifecycleListeners.forEach(listener => {
       listener(
@@ -1163,12 +1176,12 @@ export class ProviderRegistry {
   onDidUnregisterKubernetesConnectionCallback(
     provider: ProviderImpl,
     kubernetesProviderConnection: KubernetesProviderConnection,
-  ) {
+  ): void {
     this.apiSender.send('provider-unregister-kubernetes-connection', { name: kubernetesProviderConnection.name });
     this._onDidUnregisterKubernetesConnection.fire({ providerId: provider.id });
   }
 
-  onDidUpdateProviderStatus(providerId: string, callback: (providerInfo: ProviderInfo) => void) {
+  onDidUpdateProviderStatus(providerId: string, callback: (providerInfo: ProviderInfo) => void): void {
     // add callback for the given providerId
     const provider = this.getMatchingProvider(providerId);
 

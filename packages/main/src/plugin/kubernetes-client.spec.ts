@@ -16,29 +16,33 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { KubernetesClient } from './kubernetes-client.js';
-import type { ApiSenderType } from './api.js';
-import type { ConfigurationRegistry } from './configuration-registry.js';
-import { FilesystemMonitoring } from './filesystem-monitoring.js';
-import {
-  type V1Ingress,
-  type Watch,
-  type V1Deployment,
-  type V1Service,
-  type Context,
-  type KubernetesObject,
-  type Informer,
-  type ObjectCache,
-  KubeConfig,
-} from '@kubernetes/client-node';
-import * as clientNode from '@kubernetes/client-node';
-import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
 import * as fs from 'node:fs';
-import type { V1Route } from './api/openshift-types.js';
-import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
 import { IncomingMessage } from 'node:http';
 import { Socket } from 'node:net';
+
+import {
+  type Context,
+  type Informer,
+  KubeConfig,
+  type KubernetesObject,
+  type ObjectCache,
+  type V1Deployment,
+  type V1Ingress,
+  type V1Service,
+  type Watch,
+} from '@kubernetes/client-node';
+import * as clientNode from '@kubernetes/client-node';
+import type { FileSystemWatcher } from '@podman-desktop/api';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
+
+import type { ApiSenderType } from './api.js';
+import type { V1Route } from './api/openshift-types.js';
+import type { ConfigurationRegistry } from './configuration-registry.js';
+import { FilesystemMonitoring } from './filesystem-monitoring.js';
+import { KubernetesClient } from './kubernetes-client.js';
+import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
 
 const configurationRegistry: ConfigurationRegistry = {} as unknown as ConfigurationRegistry;
 const informerManager: KubernetesInformerManager = new KubernetesInformerManager();
@@ -50,6 +54,33 @@ const telemetry: Telemetry = {
 } as unknown as Telemetry;
 const makeApiClientMock = vi.fn();
 const getContextObjectMock = vi.fn();
+
+const podAndDeploymentTestYAML = `apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-deployment
+  template:
+    metadata:
+      labels:
+        app: my-deployment
+    spec:
+      containers:
+      - name: my-deployment
+        image: my-deployment-image
+        ports:
+        - containerPort: 80
+`;
 
 class TestKubernetesClient extends KubernetesClient {
   public createWatchObject(): Watch {
@@ -87,7 +118,7 @@ const context: Context = {
   user: 'user',
 };
 
-function mockContext() {
+function mockContext(): void {
   const newContext: Context = {
     cluster: 'cluster1',
     name: 'name1',
@@ -317,7 +348,7 @@ test('Create custom Kubernetes resources in error should return error', async ()
 
 test('Create unknown custom Kubernetes resources should return error', async () => {
   const client = createTestClient();
-  const createSpy = vi.spyOn(client, 'createCustomResource').mockReturnValue(Promise.resolve());
+  const createSpy = vi.spyOn(client, 'createCustomResource').mockResolvedValue(undefined);
   const pluralSpy = vi.spyOn(client, 'getAPIResource').mockRejectedValue(new Error('CustomError'));
   try {
     await client.createResources('dummy', [{ apiVersion: 'group/v1', kind: 'Namespace' }]);
@@ -1219,29 +1250,34 @@ test('Expect ingress refreshInformer should stop and start the informer again', 
 
 test('Expect apply with invalid file should error', async () => {
   const client = createTestClient('default');
+  let expectedError: unknown;
   try {
     await client.applyResourcesFromFile('default', 'missing-file.yaml');
-    throw Error('should never get here');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
-    expect(err).to.be.a('Error');
-    expect(err.message).equal('File missing-file.yaml does not exist');
+  } catch (err: unknown) {
+    expectedError = err;
   }
+  expect(expectedError).to.be.a('Error');
+  expect((expectedError as Error).message).equal('File missing-file.yaml does not exist');
 });
 
-test('Expect apply with empty yaml should return no objects', async () => {
+test('Expect apply with empty yaml should throw error', async () => {
   const client = createTestClient('default');
-  vi.spyOn(client, 'loadManifestsFromFile').mockReturnValue(Promise.resolve([]));
-
-  const objects = await client.applyResourcesFromFile('default', 'missing-file.yaml');
-  expect(objects).toEqual([]);
+  vi.spyOn(client, 'loadManifestsFromFile').mockResolvedValue([]);
+  let expectedError: unknown;
+  try {
+    await client.applyResourcesFromFile('default', 'missing-file.yaml');
+  } catch (err: unknown) {
+    expectedError = err;
+  }
+  expect(expectedError).to.be.a('Error');
+  expect((expectedError as Error).message).equal('No valid Kubernetes resources found in file');
 });
 
 test('Expect apply should create if object does not exist', async () => {
   const client = createTestClient('default');
   const manifests = { kind: test, metadata: { annotations: test } } as unknown as KubernetesObject;
   const createdObj = { kind: 'created' };
-  vi.spyOn(client, 'loadManifestsFromFile').mockReturnValue(Promise.resolve([manifests]));
+  vi.spyOn(client, 'loadManifestsFromFile').mockResolvedValue([manifests]);
   makeApiClientMock.mockReturnValue({
     create: vi.fn().mockReturnValue({ body: createdObj }),
   });
@@ -1256,16 +1292,33 @@ test('Expect apply should patch if object exists', async () => {
   const client = createTestClient('default');
   const manifests = { kind: test, metadata: { annotations: test } } as unknown as KubernetesObject;
   const patchedObj = { kind: 'patched' };
-  vi.spyOn(client, 'loadManifestsFromFile').mockReturnValue(Promise.resolve([manifests]));
+  vi.spyOn(client, 'loadManifestsFromFile').mockResolvedValue([manifests]);
+  const patchMock = vi.fn();
   makeApiClientMock.mockReturnValue({
     read: vi.fn(),
-    patch: vi.fn().mockReturnValue({ body: patchedObj }),
+    patch: patchMock.mockReturnValue({ body: patchedObj }),
   });
 
   const objects = await client.applyResourcesFromFile('default', 'some-file.yaml');
 
   expect(objects).toHaveLength(1);
   expect(objects[0]).toEqual(patchedObj);
+  expect(patchMock).toHaveBeenCalledWith(expect.any(Object), undefined, undefined, 'podman-desktop');
+});
+
+test('Expect apply should patch with specific field manager', async () => {
+  const client = createTestClient('default');
+  const manifests = { kind: test, metadata: { annotations: test } } as unknown as KubernetesObject;
+  const patchedObj = { kind: 'patched' };
+  vi.spyOn(client, 'loadManifestsFromFile').mockResolvedValue([manifests]);
+  const patchMock = vi.fn();
+  makeApiClientMock.mockReturnValue({
+    read: vi.fn(),
+    patch: patchMock.mockReturnValue({ body: patchedObj }),
+  });
+
+  await client.applyResourcesFromFile('default', 'some-file.yaml');
+  expect(patchMock).toHaveBeenCalledWith(expect.any(Object), undefined, undefined, 'podman-desktop');
 });
 
 test('If Kubernetes returns a http error, output the http body message error.', async () => {
@@ -1291,6 +1344,164 @@ test('If Kubernetes returns a http error, output the http body message error.', 
     expect(err).to.be.a('Error');
     expect(err.message).contain('A K8sError within message body');
   }
+});
+
+test('Expect loadManifestsFromYAML to correctly return a KubernetesObject[] from a valid YAML string', async () => {
+  const client = createTestClient();
+  const expectedObjects = [
+    {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: {
+        name: 'my-pod',
+      },
+    },
+    {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: {
+        name: 'my-deployment',
+        namespace: 'default',
+      },
+      spec: {
+        replicas: 3,
+        selector: {
+          matchLabels: {
+            app: 'my-deployment',
+          },
+        },
+        template: {
+          metadata: {
+            labels: {
+              app: 'my-deployment',
+            },
+          },
+          spec: {
+            containers: [
+              {
+                name: 'my-deployment',
+                image: 'my-deployment-image',
+                ports: [
+                  {
+                    containerPort: 80,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  ];
+  const objects = await client.loadManifestsFromYAML(podAndDeploymentTestYAML);
+  expect(objects).toEqual(expectedObjects);
+});
+
+test('Expect applyResourcesFromYAML to correctly call applyResources after loading the YAML', async () => {
+  const client = createTestClient();
+  const expectedObjects = [
+    {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: {
+        name: 'my-pod',
+      },
+    },
+    {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: {
+        name: 'my-deployment',
+        namespace: 'default',
+      },
+      spec: {
+        replicas: 3,
+        selector: {
+          matchLabels: {
+            app: 'my-deployment',
+          },
+        },
+        template: {
+          metadata: {
+            labels: {
+              app: 'my-deployment',
+            },
+          },
+          spec: {
+            containers: [
+              {
+                name: 'my-deployment',
+                image: 'my-deployment-image',
+                ports: [
+                  {
+                    containerPort: 80,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  ];
+  const applyResourcesSpy = vi.spyOn(client, 'applyResources').mockResolvedValue(expectedObjects);
+  const objects = await client.applyResourcesFromYAML('default', podAndDeploymentTestYAML);
+  expect(objects).toEqual(expectedObjects);
+  expect(applyResourcesSpy).toHaveBeenCalledWith('default', expectedObjects, 'apply');
+});
+
+test('setupWatcher sends kubernetes-context-update when kubeconfig file changes', async () => {
+  const client = createTestClient();
+  const fileSystemMonitoringSpy = vi.spyOn(fileSystemMonitoring, 'createFileSystemWatcher');
+  const onDidChangeMock = vi.fn();
+  vi.spyOn(client, 'refresh').mockResolvedValue(undefined);
+  fileSystemMonitoringSpy.mockReturnValue({
+    onDidChange: onDidChangeMock,
+    onDidCreate: vi.fn(),
+    onDidDelete: vi.fn(),
+  } as unknown as FileSystemWatcher);
+  onDidChangeMock.mockImplementation(f => {
+    f();
+  });
+  client.setupWatcher('/path/to/kube/config');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(apiSenderSendMock).toHaveBeenCalledWith('kubernetes-context-update');
+});
+
+test('setupWatcher sends kubernetes-context-update when kubeconfig file is created', async () => {
+  const client = createTestClient();
+  const fileSystemMonitoringSpy = vi.spyOn(fileSystemMonitoring, 'createFileSystemWatcher');
+  const onDidCreateMock = vi.fn();
+  vi.spyOn(client, 'refresh').mockResolvedValue(undefined);
+  fileSystemMonitoringSpy.mockReturnValue({
+    onDidChange: vi.fn(),
+    onDidCreate: onDidCreateMock,
+    onDidDelete: vi.fn(),
+  } as unknown as FileSystemWatcher);
+  onDidCreateMock.mockImplementation(f => {
+    f();
+  });
+  client.setupWatcher('/path/to/kube/config');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(apiSenderSendMock).toHaveBeenCalledWith('kubernetes-context-update');
+});
+
+test('setupWatcher sends kubernetes-context-update when kubeconfig file is deleted', async () => {
+  const client = createTestClient();
+  const fileSystemMonitoringSpy = vi.spyOn(fileSystemMonitoring, 'createFileSystemWatcher');
+  const onDidDeleteMock = vi.fn();
+  vi.spyOn(client, 'refresh').mockResolvedValue(undefined);
+  fileSystemMonitoringSpy.mockReturnValue({
+    onDidChange: vi.fn(),
+    onDidCreate: vi.fn(),
+    onDidDelete: onDidDeleteMock,
+  } as unknown as FileSystemWatcher);
+  onDidDeleteMock.mockImplementation(f => {
+    f();
+  });
+  client.setupWatcher('/path/to/kube/config');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(apiSenderSendMock).toHaveBeenCalledWith('kubernetes-context-update');
 });
 
 test('Expect pod to be restarted', async () => {

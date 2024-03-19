@@ -4,12 +4,13 @@
   "description": "Integration for Podman and Podman Machines",
   "version": "0.0.1",
   "icon": "icon.png",
+  "type": "module",
   "publisher": "podman-desktop",
   "license": "Apache-2.0",
   "engines": {
     "podman-desktop": "^0.0.1"
   },
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "contributes": {
     "commands": [
       {
@@ -249,7 +250,7 @@
         },
         {
           "id": "installationSuccessView",
-          "title": "${onboardingContext:installationSuccessViewTitle}",
+          "title": "Podman settings",
           "when": "!onboardingContext:podmanIsNotInstalled",
           "content": [
             [
@@ -275,16 +276,26 @@
         },
         {
           "id": "onboardingSuccess",
-          "title": "Podman successfully setup",
+          "title": "Podman installed",
           "when": "!onboardingContext:podmanIsNotInstalled",
-          "state": "completed"
+          "state": "completed",
+          "content": [
+            [],
+            [],
+            [
+              {
+                "value": "#### How to use podman \nRun `podman help` in the terminal for a list of commands to interact with Podman. For example, try the 'Create' button within the Containers tab of Podman Desktop and view your containers with `podman`:\n\n`$ podman ps`",
+                "highlight": true
+              }
+            ]
+          ]
         }
       ],
       "enablement": "(isLinux && onboardingContext:podmanIsNotInstalled) || (!isLinux && !onboardingContext:podmanMachineExists)"
     }
   },
   "scripts": {
-    "build": "vite build && npx ts-node ./scripts/download.ts && node ./scripts/build.js",
+    "build": "vite build && tsx ./scripts/download.ts && node ./scripts/build.cjs",
     "test": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest watch --coverage --passWithNoTests",
     "watch": "vite build -w"
@@ -296,13 +307,13 @@
     "ps-list": "^8.1.1"
   },
   "devDependencies": {
-    "adm-zip": "^0.5.10",
-    "hasha": "^5.2.2",
+    "adm-zip": "^0.5.12",
+    "hasha": "^6.0.0",
     "mkdirp": "^3.0.1",
-    "nock": "^13.5.0",
+    "nock": "^14.0.0-beta.5",
     "octokit": "^3.1.2",
-    "ts-node": "^10.9.2",
-    "vite": "^5.1.4",
-    "vitest": "^1.3.0"
+    "tsx": "^4.7.1",
+    "vite": "^5.1.6",
+    "vitest": "^1.4.0"
   }
 }

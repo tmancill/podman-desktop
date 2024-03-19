@@ -19,16 +19,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { beforeAll, test, expect, vi } from 'vitest';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import PodsList from '/@/lib/pod/PodsList.svelte';
-import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { get } from 'svelte/store';
-import { providerInfos } from '/@/stores/providers';
-import { filtered, podsInfos } from '/@/stores/pods';
-import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
-import { router } from 'tinro';
 import userEvent from '@testing-library/user-event';
+import { get } from 'svelte/store';
+import { router } from 'tinro';
+import { beforeAll, expect, test, vi } from 'vitest';
+
+import PodsList from '/@/lib/pod/PodsList.svelte';
+import { filtered, podsInfos } from '/@/stores/pods';
+import { providerInfos } from '/@/stores/providers';
+
+import type { PodInfo } from '../../../../main/src/plugin/api/pod-info';
+import type { ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 
 const getProvidersInfoMock = vi.fn();
 const listPodsMock = vi.fn();
@@ -262,6 +265,8 @@ const ocppod: PodInfo = {
 
 // fake the window.events object
 beforeAll(() => {
+  (window as any).kubernetesGetContextsGeneralState = () => Promise.resolve(new Map());
+  (window as any).kubernetesGetCurrentContextGeneralState = () => Promise.resolve({});
   (window as any).getProviderInfos = getProvidersInfoMock;
   (window as any).listPods = listPodsMock;
   (window as any).listContainers = listContainersMock.mockResolvedValue([]);
@@ -416,7 +421,7 @@ test('Expect the route to a pod details page is correctly encoded with an engine
   router.goto = routerGotoMock;
   await fireEvent.click(podDetails);
   expect(routerGotoMock).toHaveBeenCalledWith(
-    '/pods/kubernetes/ocppod/userid-dev%2Fapi-sandbox-123-openshiftapps-com%3A6443%2FuserId/logs',
+    '/pods/kubernetes/ocppod/userid-dev%2Fapi-sandbox-123-openshiftapps-com%3A6443%2FuserId/',
   );
 });
 

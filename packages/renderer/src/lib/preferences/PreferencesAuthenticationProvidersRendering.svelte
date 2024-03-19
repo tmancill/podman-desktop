@@ -1,13 +1,21 @@
 <script lang="ts">
-import { authenticationProviders } from '../../stores/authenticationProviders';
-import { faCircle, faRightFromBracket, faArrowRightToBracket } from '@fortawesome/free-solid-svg-icons';
-import SettingsPage from './SettingsPage.svelte';
+import {
+  faArrowRightToBracket,
+  faCircle,
+  faRightFromBracket,
+  faRightToBracket,
+} from '@fortawesome/free-solid-svg-icons';
 import Fa from 'svelte-fa';
+
+import Tooltip from '/@/lib/ui/Tooltip.svelte';
+
+import { authenticationProviders } from '../../stores/authenticationProviders';
 import KeyIcon from '../images/KeyIcon.svelte';
-import EmptyScreen from '../ui/EmptyScreen.svelte';
+import Button from '../ui/Button.svelte';
 import DropdownMenu from '../ui/DropdownMenu.svelte';
 import DropdownMenuItem from '../ui/DropDownMenuItem.svelte';
-import Tooltip from '/@/lib/ui/Tooltip.svelte';
+import EmptyScreen from '../ui/EmptyScreen.svelte';
+import SettingsPage from './SettingsPage.svelte';
 </script>
 
 <SettingsPage title="Authentication">
@@ -19,6 +27,7 @@ import Tooltip from '/@/lib/ui/Tooltip.svelte';
       message="Install an authentication provider extension to add an authentication provider here."
       hidden="{$authenticationProviders.length > 0}" />
     {#each $authenticationProviders as provider}
+      {@const sessionRequests = provider.sessionRequests ?? []}
       <!-- Registered Authentication Provider row start -->
       <div class="flex flex-col w-full mb-5">
         <div
@@ -82,7 +91,7 @@ import Tooltip from '/@/lib/ui/Tooltip.svelte';
                         <span class="my-auto font-bold col-span-1 text-ellipsis overflow-hidden max-w-64">
                           {account.label}
                         </span>
-                        <Tooltip tip="Sign out of {account.label}" left>
+                        <Tooltip tip="Sign out of {account.label}" bottomRight>
                           <button
                             aria-label="Sign out of {account.label}"
                             class="pl-2 hover:cursor-pointer hover:text-white text-white"
@@ -98,10 +107,23 @@ import Tooltip from '/@/lib/ui/Tooltip.svelte';
             {/if}
           </div>
 
-          <!-- Authentication Provider Session label start -->
           <div class="ml-4 flex items-center">
-            {#if (provider.sessionRequests || []).length > 0}
-              {@const sessionRequests = provider.sessionRequests || []}
+            {#if sessionRequests.length === 1}
+              {@const request = sessionRequests[0]}
+              <!-- Authentication Provider Auth Request Sign In button start -->
+              <Tooltip tip="Sign in to use {request.extensionLabel}" bottomLeft>
+                <Button
+                  aria-label="Sign in"
+                  class="pl-2 mr-4 hover:cursor-pointer hover:text-white text-white"
+                  on:click="{() => window.requestAuthenticationProviderSignIn(request.id)}">
+                  <div class="flex flex-row items-center">
+                    <Fa class="h-3 w-3 text-md mr-2" icon="{faRightToBracket}" />Sign in
+                  </div>
+                </Button>
+              </Tooltip>
+              <!-- Authentication Provider Auth Request Sign In button end -->
+            {:else if sessionRequests.length > 1}
+              <!-- Authentication Provider Auth Requests DropDown start -->
               <DropdownMenu>
                 {#each sessionRequests as request}
                   <DropdownMenuItem
@@ -110,6 +132,7 @@ import Tooltip from '/@/lib/ui/Tooltip.svelte';
                     icon="{faArrowRightToBracket}" />
                 {/each}
               </DropdownMenu>
+              <!-- Authentication Provider Auth Requests DropDown end -->
             {/if}
           </div>
         </div>

@@ -20,53 +20,8 @@
  * @module preload
  */
 
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import { contextBridge, ipcRenderer } from 'electron';
-import EventEmitter from 'events';
-import type {
-  ContainerCreateOptions,
-  ContainerInfo,
-  SimpleContainerInfo,
-  VolumeCreateOptions,
-} from '../../main/src/plugin/api/container-info';
-import type { ContributionInfo } from '../../main/src/plugin/api/contribution-info';
-import type { ImageInfo } from '../../main/src/plugin/api/image-info';
-import type { VolumeInspectInfo, VolumeListInfo } from '../../main/src/plugin/api/volume-info';
-import type { PodInfo, PodInspectInfo } from '../../main/src/plugin/api/pod-info';
-import type { NetworkInspectInfo } from '../../main/src/plugin/api/network-info';
-import type { ImageInspectInfo } from '../../main/src/plugin/api/image-inspect-info';
-import type { HistoryInfo } from '../../main/src/plugin/api/history-info';
-import type { ContainerInspectInfo } from '../../main/src/plugin/api/container-inspect-info';
-import type { ContainerStatsInfo } from '../../main/src/plugin/api/container-stats-info';
-import type { IconInfo } from '../../main/src/plugin/api/icon-info';
-import type { ColorInfo } from '../../main/src/plugin/api/color-info';
-import type { WebviewInfo } from '../../main/src/plugin/api/webview-info';
-import type { ExtensionInfo } from '../../main/src/plugin/api/extension-info';
-import type { FeaturedExtension } from '../../main/src/plugin/featured/featured-api';
-import type { CatalogExtension } from '../../main/src/plugin/extensions-catalog/extensions-catalog-api';
-import type { CommandInfo } from '../../main/src/plugin/api/command-info';
-import type { KubernetesInformerResourcesType } from '../../main/src/plugin/api/kubernetes-informer-info';
-import type { Guide } from '../../main/src/plugin/learning-center/learning-center-api';
+import EventEmitter from 'node:events';
 
-import type { V1Route } from '../../main/src/plugin/api/openshift-types';
-import type { AuthenticationProviderInfo } from '../../main/src/plugin/authentication';
-import type {
-  PreflightCheckEvent,
-  PreflightChecksCallback,
-  ProviderContainerConnectionInfo,
-  ProviderInfo,
-  ProviderKubernetesConnectionInfo,
-} from '../../main/src/plugin/api/provider-info';
-import type { CliToolInfo } from '../../main/src/plugin/api/cli-tool-info';
-import type { ImageCheckerInfo } from '../../main/src/plugin/api/image-checker-info';
-import type { IConfigurationPropertyRecordedSchema } from '../../main/src/plugin/configuration-registry';
-import type { PullEvent } from '../../main/src/plugin/api/pull-event';
-import { Deferred } from './util/deferred';
-import type { StatusBarEntryDescriptor } from '../../main/src/plugin/statusbar/statusbar-registry';
-import type {
-  PlayKubeInfo,
-  ContainerCreateOptions as PodmanContainerCreateOptions,
-} from '../../main/src/plugin/dockerode/libpod-dockerode';
 import type {
   Cluster,
   Context,
@@ -79,23 +34,69 @@ import type {
   V1PodList,
   V1Service,
 } from '@kubernetes/client-node';
-import type { Menu } from '../../main/src/plugin/menu-registry';
-import type { MessageBoxOptions, MessageBoxReturnValue } from '../../main/src/plugin/message-box';
-import type { ViewInfoUI } from '../../main/src/plugin/api/view-info';
-import type { ContextInfo } from '../../main/src/plugin/api/context-info';
-import type { OnboardingInfo, OnboardingStatus } from '../../main/src/plugin/api/onboarding';
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import { contextBridge, ipcRenderer } from 'electron';
+
+import type { ApiSenderType } from '../../main/src/plugin/api';
+import type { CliToolInfo } from '../../main/src/plugin/api/cli-tool-info';
+import type { ColorInfo } from '../../main/src/plugin/api/color-info';
+import type { CommandInfo } from '../../main/src/plugin/api/command-info';
 import type {
-  KubernetesGeneratorSelector,
+  ContainerCreateOptions,
+  ContainerExportOptions,
+  ContainerInfo,
+  SimpleContainerInfo,
+  VolumeCreateOptions,
+} from '../../main/src/plugin/api/container-info';
+import type { ContainerInspectInfo } from '../../main/src/plugin/api/container-inspect-info';
+import type { ContainerStatsInfo } from '../../main/src/plugin/api/container-stats-info';
+import type { ContextInfo } from '../../main/src/plugin/api/context-info';
+import type { ContributionInfo } from '../../main/src/plugin/api/contribution-info';
+import type { ExtensionInfo } from '../../main/src/plugin/api/extension-info';
+import type { HistoryInfo } from '../../main/src/plugin/api/history-info';
+import type { IconInfo } from '../../main/src/plugin/api/icon-info';
+import type { ImageCheckerInfo } from '../../main/src/plugin/api/image-checker-info';
+import type { ImageInfo } from '../../main/src/plugin/api/image-info';
+import type { ImageInspectInfo } from '../../main/src/plugin/api/image-inspect-info';
+import type { KubernetesInformerResourcesType } from '../../main/src/plugin/api/kubernetes-informer-info';
+import type { KubernetesGeneratorInfo } from '../../main/src/plugin/api/KubernetesGeneratorInfo';
+import type { NetworkInspectInfo } from '../../main/src/plugin/api/network-info';
+import type { NotificationCard, NotificationCardOptions } from '../../main/src/plugin/api/notification';
+import type { OnboardingInfo, OnboardingStatus } from '../../main/src/plugin/api/onboarding';
+import type { V1Route } from '../../main/src/plugin/api/openshift-types';
+import type { PodCreateOptions, PodInfo, PodInspectInfo } from '../../main/src/plugin/api/pod-info';
+import type {
+  PreflightCheckEvent,
+  PreflightChecksCallback,
+  ProviderContainerConnectionInfo,
+  ProviderInfo,
+  ProviderKubernetesConnectionInfo,
+} from '../../main/src/plugin/api/provider-info';
+import type { PullEvent } from '../../main/src/plugin/api/pull-event';
+import type { ViewInfoUI } from '../../main/src/plugin/api/view-info';
+import type { VolumeInspectInfo, VolumeListInfo } from '../../main/src/plugin/api/volume-info';
+import type { WebviewInfo } from '../../main/src/plugin/api/webview-info';
+import type { AuthenticationProviderInfo } from '../../main/src/plugin/authentication';
+import type { IConfigurationPropertyRecordedSchema } from '../../main/src/plugin/configuration-registry';
+import type {
+  ContainerCreateOptions as PodmanContainerCreateOptions,
+  PlayKubeInfo,
+} from '../../main/src/plugin/dockerode/libpod-dockerode';
+import type { CatalogExtension } from '../../main/src/plugin/extensions-catalog/extensions-catalog-api';
+import type { FeaturedExtension } from '../../main/src/plugin/featured/featured-api';
+import type {
   GenerateKubeResult,
   KubernetesGeneratorArgument,
+  KubernetesGeneratorSelector,
 } from '../../main/src/plugin/kube-generator-registry';
 import type { KubeContext } from '../../main/src/plugin/kubernetes-context';
-
-import type { KubernetesGeneratorInfo } from '../../main/src/plugin/api/KubernetesGeneratorInfo';
-import type { NotificationCard, NotificationCardOptions } from '../../main/src/plugin/api/notification';
-import type { ApiSenderType } from '../../main/src/plugin/api';
+import type { ContextGeneralState, ResourceName } from '../../main/src/plugin/kubernetes-context-state.js';
+import type { Guide } from '../../main/src/plugin/learning-center/learning-center-api';
+import type { Menu } from '../../main/src/plugin/menu-registry';
+import type { MessageBoxOptions, MessageBoxReturnValue } from '../../main/src/plugin/message-box';
+import type { StatusBarEntryDescriptor } from '../../main/src/plugin/statusbar/statusbar-registry';
 import type { IDisposable } from '../../main/src/plugin/types/disposable';
-import type { ContextState } from '../../main/src/plugin/kubernetes-context-state.js';
+import { Deferred } from './util/deferred';
 
 export type DialogResultCallback = (openDialogReturnValue: Electron.OpenDialogReturnValue) => void;
 export type OpenSaveDialogResultCallback = (result: string | string[] | undefined) => void;
@@ -123,13 +124,13 @@ export const buildApiSender = (): ApiSenderType => {
   const eventEmitter = new EventEmitter();
 
   return {
-    send: (channel: string, data: unknown) => {
+    send: (channel: string, data: unknown): void => {
       eventEmitter.emit(channel, data);
     },
     receive: (channel: string, func: (...args: unknown[]) => void): IDisposable => {
       eventEmitter.on(channel, func);
       return {
-        dispose: () => {
+        dispose: (): void => {
           eventEmitter.removeListener(channel, func);
         },
       };
@@ -148,7 +149,7 @@ export function initExposure(): void {
     extra: any;
   }
 
-  function decodeError(error: ErrorMessage) {
+  function decodeError(error: ErrorMessage): Error {
     const e = new Error(error.message);
     e.name = error.name;
     Object.assign(e, error.extra);
@@ -156,7 +157,7 @@ export function initExposure(): void {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function ipcInvoke(channel: string, ...args: any) {
+  async function ipcInvoke(channel: string, ...args: any): Promise<any> {
     const { error, result } = await ipcRenderer.invoke(channel, ...args);
     if (error) {
       throw decodeError(error);
@@ -175,7 +176,7 @@ export function initExposure(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const originalFunction = (originalConsole as any)[logType];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (console as any)[logType] = (...args: unknown[]) => {
+    (console as any)[logType] = (...args: unknown[]): void => {
       originalFunction(...args);
       memoryLogs.push({ logType: logType, date: new Date(), message: args.join(' ') });
     };
@@ -268,7 +269,7 @@ export function initExposure(): void {
   );
   contextBridge.exposeInMainWorld(
     'createPod',
-    async (podCreateOptions: containerDesktopAPI.PodCreateOptions): Promise<{ engineId: string; Id: string }> => {
+    async (podCreateOptions: PodCreateOptions): Promise<{ engineId: string; Id: string }> => {
       return ipcInvoke('container-provider-registry:createPod', podCreateOptions);
     },
   );
@@ -440,6 +441,13 @@ export function initExposure(): void {
   contextBridge.exposeInMainWorld('deleteContainer', async (engine: string, containerId: string): Promise<void> => {
     return ipcInvoke('container-provider-registry:deleteContainer', engine, containerId);
   });
+
+  contextBridge.exposeInMainWorld(
+    'exportContainer',
+    async (engine: string, options: ContainerExportOptions): Promise<void> => {
+      return ipcInvoke('container-provider-registry:exportContainer', engine, options);
+    },
+  );
 
   let onDataCallbacksLogsContainerId = 0;
   const onDataCallbacksLogsContainer = new Map<number, (name: string, data: string) => void>();
@@ -1290,23 +1298,6 @@ export function initExposure(): void {
     apiSender.send('dev-tools:open-webview', webviewId);
   });
 
-  // Handle callback on dialog file/folder by calling the callback once we get the answer
-  ipcRenderer.on(
-    'dialog:open-file-or-folder-response',
-    (_, dialogId: string, openDialogReturnValue: Electron.OpenDialogReturnValue) => {
-      // grab from stored map
-      const callback = dialogResponses.get(dialogId);
-      if (callback) {
-        callback(openDialogReturnValue);
-
-        // remove callback
-        dialogResponses.delete(dialogId);
-      } else {
-        console.error('Got response for an unknown dialog id', dialogId);
-      }
-    },
-  );
-
   // Handle callback on dialogs by calling the callback once we get the answer
   ipcRenderer.on('dialog:open-save-dialog-response', (_, dialogId: string, result: string | string[] | undefined) => {
     // grab from stored map
@@ -1370,84 +1361,6 @@ export function initExposure(): void {
       return handle.deferred.promise as Promise<string | undefined>;
     },
   );
-
-  let idDialog = 0;
-
-  const dialogResponses = new Map<string, DialogResultCallback>();
-
-  contextBridge.exposeInMainWorld('saveFileDialog', async (message: string, defaultPath: string) => {
-    // generate id
-    const dialogId = idDialog;
-    idDialog++;
-
-    // create defer object
-    const defer = new Deferred<Electron.SaveDialogReturnValue>();
-
-    // store the dialogID
-    dialogResponses.set(`${dialogId}`, (result: Electron.SaveDialogReturnValue) => {
-      defer.resolve(result);
-    });
-
-    // ask to open file dialog
-    ipcRenderer.send('dialog:saveFile', {
-      dialogId: `${dialogId}`,
-      message,
-      defaultPath,
-    });
-
-    // wait for response
-    return defer.promise;
-  });
-
-  contextBridge.exposeInMainWorld(
-    'openFileDialog',
-    async (message: string, filter?: { extensions: string[]; name: string }) => {
-      // generate id
-      const dialogId = idDialog;
-      idDialog++;
-
-      // create defer object
-      const defer = new Deferred<Electron.OpenDialogReturnValue>();
-
-      // store the dialogID
-      dialogResponses.set(`${dialogId}`, (result: Electron.OpenDialogReturnValue) => {
-        defer.resolve(result);
-      });
-
-      // ask to open file dialog
-      ipcRenderer.send('dialog:openFile', {
-        dialogId: `${dialogId}`,
-        message,
-        filter,
-      });
-
-      // wait for response
-      return defer.promise;
-    },
-  );
-
-  contextBridge.exposeInMainWorld('openFolderDialog', async (message: string) => {
-    // generate id
-    const dialogId = idDialog;
-    idDialog++;
-
-    // create defer object
-    const defer = new Deferred<Electron.OpenDialogReturnValue>();
-
-    // store the dialogID
-    dialogResponses.set(`${dialogId}`, (result: Electron.OpenDialogReturnValue) => {
-      defer.resolve(result);
-    });
-
-    // ask to open file dialog
-    ipcRenderer.send('dialog:openFolder', {
-      dialogId: `${dialogId}`,
-      message,
-    });
-
-    // wait for response
-    return defer.promise;
-  });
 
   contextBridge.exposeInMainWorld('getFreePort', async (port: number): Promise<number> => {
     return ipcInvoke('system:get-free-port', port);
@@ -1663,9 +1576,27 @@ export function initExposure(): void {
   contextBridge.exposeInMainWorld('kubernetesSetContext', async (contextName: string): Promise<void> => {
     return ipcInvoke('kubernetes-client:setContext', contextName);
   });
-  contextBridge.exposeInMainWorld('kubernetesGetContextsState', async (): Promise<Map<string, ContextState>> => {
-    return ipcInvoke('kubernetes-client:getContextsState');
+  contextBridge.exposeInMainWorld(
+    'kubernetesGetContextsGeneralState',
+    async (): Promise<Map<string, ContextGeneralState>> => {
+      return ipcInvoke('kubernetes-client:getContextsGeneralState');
+    },
+  );
+  contextBridge.exposeInMainWorld('kubernetesGetCurrentContextGeneralState', async (): Promise<ContextGeneralState> => {
+    return ipcInvoke('kubernetes-client:getCurrentContextGeneralState');
   });
+  contextBridge.exposeInMainWorld(
+    'kubernetesRegisterGetCurrentContextResources',
+    async (resourceName: ResourceName): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:registerGetCurrentContextResources', resourceName);
+    },
+  );
+  contextBridge.exposeInMainWorld(
+    'kubernetesUnregisterGetCurrentContextResources',
+    async (resourceName: ResourceName): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:unregisterGetCurrentContextResources', resourceName);
+    },
+  );
 
   contextBridge.exposeInMainWorld('kubernetesGetClusters', async (): Promise<Cluster[]> => {
     return ipcInvoke('kubernetes-client:getClusters');
@@ -1833,8 +1764,15 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld(
     'kubernetesApplyResourcesFromFile',
-    async (context: string, file: string): Promise<KubernetesObject[]> => {
-      return ipcInvoke('kubernetes-client:applyResourcesFromFile', context, file);
+    async (context: string, file: string, namespace?: string): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:applyResourcesFromFile', context, file, namespace);
+    },
+  );
+
+  contextBridge.exposeInMainWorld(
+    'kubernetesApplyResourcesFromYAML',
+    async (context: string, yaml: string): Promise<KubernetesObject[]> => {
+      return ipcInvoke('kubernetes-client:applyResourcesFromYAML', context, yaml);
     },
   );
 
@@ -2052,6 +1990,10 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld('listGuides', async (): Promise<Guide[]> => {
     return ipcInvoke('learning-center:listGuides');
+  });
+
+  contextBridge.exposeInMainWorld('contextCollectAllValues', async (): Promise<Record<string, unknown>> => {
+    return ipcInvoke('context:collectAllValues');
   });
 }
 

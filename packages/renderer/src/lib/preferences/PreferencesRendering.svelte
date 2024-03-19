@@ -1,15 +1,16 @@
 <script lang="ts">
-import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
-
-import PreferencesRenderingItem from './PreferencesRenderingItem.svelte';
-import SettingsPage from './SettingsPage.svelte';
-import Route from '../../Route.svelte';
-import { isDefaultScope, isPropertyValidInContext } from './Util';
-import type { ContextUI } from '../context/context';
-import { context } from '/@/stores/context';
 import { onDestroy, onMount } from 'svelte';
 import { type Unsubscriber } from 'svelte/store';
+
+import { context } from '/@/stores/context';
+
+import type { IConfigurationPropertyRecordedSchema } from '../../../../main/src/plugin/configuration-registry';
+import Route from '../../Route.svelte';
+import type { ContextUI } from '../context/context';
 import SearchInput from '../ui/SearchInput.svelte';
+import PreferencesRenderingItem from './PreferencesRenderingItem.svelte';
+import SettingsPage from './SettingsPage.svelte';
+import { isDefaultScope, isPropertyValidInContext } from './Util';
 
 export let properties: IConfigurationPropertyRecordedSchema[] = [];
 export let key: string;
@@ -78,7 +79,7 @@ function updateSearchValue(event: any) {
             <div>
               <div class="first-letter:uppercase">{records.at(0)?.title}</div>
               {#each records as configItem}
-                <div class="bg-charcoal-600 rounded-md mt-2 ml-2">
+                <div class="bg-[var(--pd-invert-content-card-bg)] rounded-md mt-2 ml-2">
                   <PreferencesRenderingItem record="{configItem}" />
                 </div>
               {/each}

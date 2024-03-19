@@ -16,11 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { ProxySettings, Event } from '@podman-desktop/api';
+import type { Event, ProxySettings } from '@podman-desktop/api';
+import { ProxyAgent } from 'undici';
+
 import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
 import { Emitter } from './events/emitter.js';
 import { getProxyUrl } from './proxy-resolver.js';
-import { ProxyAgent } from 'undici';
 
 export function ensureURL(urlstring: string | undefined): string | undefined {
   if (urlstring) {
@@ -161,12 +162,12 @@ export class Proxy {
     this._onDidStateChange.fire(this.proxyState);
   }
 
-  private overrideFetch() {
+  private overrideFetch(): void {
     const original = globalThis.fetch;
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const _me = this;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    globalThis.fetch = function (url: any, opts?: any) {
+    globalThis.fetch = function (url: any, opts?: any): Promise<Response> {
       const proxyurl = getProxyUrl(_me, asURL(url).protocol === 'https');
       if (proxyurl) {
         opts = Object.assign({}, opts, { dispatcher: new ProxyAgent(proxyurl) });

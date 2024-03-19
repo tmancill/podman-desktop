@@ -1,10 +1,11 @@
 <script lang="ts">
 import { router } from 'tinro';
+
 import type { VolumeInfoUI } from './VolumeInfoUI';
 
 export let object: VolumeInfoUI;
 
-function openDetailsVolume(volume: VolumeInfoUI) {
+function openDetailsVolume(volume: VolumeInfoUI): void {
   router.goto(`/volumes/${encodeURI(volume.name)}/${encodeURI(volume.engineId)}/summary`);
 }
 </script>

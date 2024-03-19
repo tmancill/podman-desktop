@@ -1,18 +1,21 @@
 <script lang="ts">
-import Route from '../../Route.svelte';
+import type { V1Deployment } from '@kubernetes/client-node';
 import { onMount } from 'svelte';
-import type { DeploymentUI } from './DeploymentUI';
-import { DeploymentUtils } from './deployment-utils';
+import { stringify } from 'yaml';
+
+import { kubernetesCurrentContextDeployments } from '/@/stores/kubernetes-contexts-state';
+
+import Route from '../../Route.svelte';
+import MonacoEditor from '../editor/MonacoEditor.svelte';
+import DeploymentIcon from '../images/DeploymentIcon.svelte';
 import StatusIcon from '../images/StatusIcon.svelte';
+import KubeEditYAML from '../kube/KubeEditYAML.svelte';
 import DetailsPage from '../ui/DetailsPage.svelte';
 import Tab from '../ui/Tab.svelte';
-import DeploymentIcon from '../images/DeploymentIcon.svelte';
+import { DeploymentUtils } from './deployment-utils';
 import DeploymentActions from './DeploymentActions.svelte';
 import DeploymentDetailsSummary from './DeploymentDetailsSummary.svelte';
-import { deployments } from '/@/stores/deployments';
-import type { V1Deployment } from '@kubernetes/client-node';
-import { stringify } from 'yaml';
-import MonacoEditor from '../editor/MonacoEditor.svelte';
+import type { DeploymentUI } from './DeploymentUI';
 
 export let name: string;
 export let namespace: string;
@@ -25,7 +28,7 @@ let kubeError: string;
 onMount(() => {
   const deploymentUtils = new DeploymentUtils();
   // loading deployment info
-  return deployments.subscribe(deployments => {
+  return kubernetesCurrentContextDeployments.subscribe(deployments => {
     const matchingDeployment = deployments.find(
       dep => dep.metadata?.name === name && dep.metadata?.namespace === namespace,
     );
@@ -66,13 +69,13 @@ async function loadDetails() {
     </svelte:fragment>
     <svelte:fragment slot="content">
       <Route path="/summary" breadcrumb="Summary" navigationHint="tab">
-        <DeploymentDetailsSummary deploymentUI="{deployment}" deployment="{kubeDeployment}" kubeError="{kubeError}" />
+        <DeploymentDetailsSummary deployment="{kubeDeployment}" kubeError="{kubeError}" />
       </Route>
       <Route path="/inspect" breadcrumb="Inspect" navigationHint="tab">
         <MonacoEditor content="{JSON.stringify(kubeDeployment, undefined, 2)}" language="json" />
       </Route>
       <Route path="/kube" breadcrumb="Kube" navigationHint="tab">
-        <MonacoEditor content="{stringify(kubeDeployment)}" language="yaml" />
+        <KubeEditYAML content="{stringify(kubeDeployment)}" />
       </Route>
     </svelte:fragment>
   </DetailsPage>

@@ -1,8 +1,9 @@
 <script lang="ts">
-import type { FeaturedExtension } from '../../../../main/src/plugin/featured/featured-api';
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
-import LoadingIcon from '../ui/LoadingIcon.svelte';
+
+import type { FeaturedExtension } from '../../../../main/src/plugin/featured/featured-api';
 import ErrorMessage from '../ui/ErrorMessage.svelte';
+import LoadingIcon from '../ui/LoadingIcon.svelte';
 
 export let featuredExtension: FeaturedExtension;
 
@@ -70,7 +71,7 @@ async function installExtension() {
   <span class="ml-0.5"></span>
   <LoadingIcon
     icon="{faDownload}"
-    iconSize="16"
+    iconSize="1x"
     loadingWidthClass="w-7"
     loadingHeightClass="h-7"
     positionTopClass="top-[2px]"

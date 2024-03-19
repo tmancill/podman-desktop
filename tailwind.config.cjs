@@ -24,6 +24,7 @@ module.exports = {
   content: [
     'packages/renderer/index.html',
     'packages/renderer/src/**/*.{svelte,ts,css}',
+    'packages/ui/src/**/*.{svelte,ts,css}',
   ],
   darkMode: 'class',
   theme: {
@@ -77,7 +78,6 @@ module.exports = {
         'unknown': tailwindColors.gray[100],
 
       },
-      transparent: 'transparent',
       // The remaining colors below are not part of our palette and are only here
       // to maintain existing code. No new use.
       'zinc': {

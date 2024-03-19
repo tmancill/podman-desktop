@@ -17,19 +17,21 @@
  ***********************************************************************/
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import * as fs from 'node:fs';
+
+import type { Configuration, ContainerEngineInfo, ContainerProviderConnection } from '@podman-desktop/api';
+import * as extensionApi from '@podman-desktop/api';
+import { Disposable } from '@podman-desktop/api';
 import type { Mock } from 'vitest';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+import { DarwinSocketCompatibility } from './compatibility-mode';
 import { checkDisguisedPodmanSocket } from './extension';
 import * as extension from './extension';
 import type { InstalledPodman } from './podman-cli';
 import { getPodmanCli } from './podman-cli';
-import type { Configuration, ContainerEngineInfo, ContainerProviderConnection } from '@podman-desktop/api';
-import * as extensionApi from '@podman-desktop/api';
-import * as fs from 'node:fs';
-import { isLinux, isMac, LoggerDelegator } from './util';
-import { DarwinSocketCompatibility } from './compatibility-mode';
 import { PodmanInstall } from './podman-install';
-import { Disposable } from '@podman-desktop/api';
+import { isLinux, isMac, LoggerDelegator } from './util';
 
 const config: Configuration = {
   get: () => {
@@ -147,15 +149,15 @@ const consoleErrorMock = vi.fn();
 vi.mock('@podman-desktop/api', async () => {
   return {
     configuration: {
-      getConfiguration: () => config,
-      onDidChangeConfiguration: () => {
+      getConfiguration: (): Configuration => config,
+      onDidChangeConfiguration: (): any => {
         return {
           dispose: vi.fn(),
         };
       },
     },
     proxy: {
-      isEnabled: () => false,
+      isEnabled: (): boolean => false,
     },
     window: {
       showErrorMessage: vi.fn(),
@@ -170,9 +172,9 @@ vi.mock('@podman-desktop/api', async () => {
     },
     env: {
       createTelemetryLogger: vi.fn(),
-      isWindows: () => vi.fn(),
-      isMac: () => vi.fn(),
-      isLinux: () => vi.fn(),
+      isWindows: (): (() => boolean) => vi.fn(),
+      isMac: (): (() => boolean) => vi.fn(),
+      isLinux: (): (() => boolean) => vi.fn(),
     },
     containerEngine: {
       info: vi.fn(),
@@ -1042,8 +1044,25 @@ test('provider is registered with edit capabilities on MacOS', async () => {
 });
 
 test('provider is registered without edit capabilities on Windows', async () => {
-  // Mock platform to be darwin
   vi.mocked(isMac).mockReturnValue(false);
+  extension.initExtensionContext({ subscriptions: [] } as extensionApi.ExtensionContext);
+  const spyExecPromise = vi.spyOn(extensionApi.process, 'exec');
+  spyExecPromise.mockImplementation(() => {
+    return Promise.reject(new Error('wsl bootstrap script failed: exit status 0xffffffff'));
+  });
+  let registeredConnection: ContainerProviderConnection;
+  vi.mocked(provider.registerContainerProviderConnection).mockImplementation(connection => {
+    registeredConnection = connection;
+    return Disposable.from({ dispose: () => {} });
+  });
+  await extension.registerProviderFor(provider, machineInfo, undefined);
+  expect(registeredConnection).toBeDefined();
+  expect(registeredConnection.lifecycle).toBeDefined();
+  expect(registeredConnection.lifecycle.edit).toBeUndefined();
+});
+
+test('provider is registered without edit capabilities on Linux', async () => {
+  vi.mocked(isLinux).mockReturnValue(true);
   extension.initExtensionContext({ subscriptions: [] } as extensionApi.ExtensionContext);
   const spyExecPromise = vi.spyOn(extensionApi.process, 'exec');
   spyExecPromise.mockImplementation(() => {
@@ -1070,4 +1089,30 @@ test('checkDisguisedPodmanSocket: runs updateWarnings when called not on Linux',
   vi.mocked(isLinux).mockReturnValue(false);
   await checkDisguisedPodmanSocket(provider);
   expect(updateWarningsMock).toBeCalled();
+});
+
+test('Even with getJSONMachineList erroring, do not show setup notification on Linux', async () => {
+  vi.mocked(isLinux).mockReturnValue(true);
+  vi.spyOn(extensionApi.process, 'exec').mockRejectedValue({
+    name: 'name',
+    message: 'description',
+    stderr: 'error',
+  });
+  await expect(extension.updateMachines(provider)).rejects.toThrow('description');
+  expect(extensionApi.window.showNotification).not.toBeCalled();
+});
+
+test('If machine list is empty, do not show setup notification on Linux', async () => {
+  vi.mocked(isLinux).mockReturnValue(true);
+  const spyExecPromise = vi.spyOn(extensionApi.process, 'exec');
+  spyExecPromise.mockResolvedValue({ stdout: '[]' } as extensionApi.RunResult);
+  await extension.updateMachines(provider);
+  expect(extensionApi.window.showNotification).not.toBeCalled();
+});
+
+test('if there are no machines, make sure checkDefaultMachine is not being ran inside updateMachines', async () => {
+  const spyCheckDefaultMachine = vi.spyOn(extension, 'checkDefaultMachine');
+  vi.spyOn(extensionApi.process, 'exec').mockResolvedValue({ stdout: '[]' } as extensionApi.RunResult);
+  await extension.updateMachines(provider);
+  expect(spyCheckDefaultMachine).not.toBeCalled();
 });

@@ -17,10 +17,11 @@
  ***********************************************************************/
 
 import type { BrowserWindow } from 'electron';
+
 import type { ConfigurationRegistry } from './plugin/configuration-registry.js';
 
 export class OpenDevTools {
-  open(browserWindow: BrowserWindow, configurationRegistry?: ConfigurationRegistry) {
+  open(browserWindow: BrowserWindow, configurationRegistry?: ConfigurationRegistry): void {
     if (import.meta.env.DEV) {
       // grab configuration option
       const preferencesConfiguration = configurationRegistry?.getConfiguration('preferences');

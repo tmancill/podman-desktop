@@ -19,19 +19,72 @@
 /**
  * @module preload
  */
-import * as os from 'node:os';
-import * as path from 'path';
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import { CommandRegistry } from './command-registry.js';
-import { ContainerProviderRegistry } from './container-registry.js';
-import { ExtensionLoader } from './extension-loader.js';
-import { TrayMenuRegistry } from './tray-menu-registry.js';
-import { ProviderRegistry } from './provider-registry.js';
-import type { IConfigurationPropertyRecordedSchema } from './configuration-registry.js';
-import { ConfigurationRegistry } from './configuration-registry.js';
-import { TerminalInit } from './terminal-init.js';
-import { ImageRegistry } from './image-registry.js';
 import { EventEmitter } from 'node:events';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import type {
+  Cluster,
+  Context as KubernetesContext,
+  KubernetesObject,
+  V1ConfigMap,
+  V1Deployment,
+  V1Ingress,
+  V1NamespaceList,
+  V1Pod,
+  V1PodList,
+  V1Service,
+} from '@kubernetes/client-node';
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import checkDiskSpacePkg from 'check-disk-space';
+import type Dockerode from 'dockerode';
+import type { WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron/main';
+
+import type { KubernetesGeneratorInfo } from '/@/plugin/api/KubernetesGeneratorInfo.js';
+import type {
+  GenerateKubeResult,
+  KubernetesGeneratorArgument,
+  KubernetesGeneratorSelector,
+} from '/@/plugin/kube-generator-registry.js';
+import { KubeGeneratorRegistry } from '/@/plugin/kube-generator-registry.js';
+import type { Menu } from '/@/plugin/menu-registry.js';
+import { MenuRegistry } from '/@/plugin/menu-registry.js';
+import { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
+import { TaskManager } from '/@/plugin/task-manager.js';
+import { Updater } from '/@/plugin/updater.js';
+
+import { securityRestrictionCurrentHandler } from '../security-restrictions-handler.js';
+import type { TrayMenu } from '../tray-menu.js';
+import { isMac } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { CliToolInfo } from './api/cli-tool-info.js';
+import type { ColorInfo } from './api/color-info.js';
+import type { CommandInfo } from './api/command-info.js';
+import type {
+  ContainerCreateOptions,
+  ContainerExportOptions,
+  ContainerInfo,
+  SimpleContainerInfo,
+  VolumeCreateOptions,
+  VolumeCreateResponseInfo,
+} from './api/container-info.js';
+import type { ContainerInspectInfo } from './api/container-inspect-info.js';
+import type { ContainerStatsInfo } from './api/container-stats-info.js';
+import type { ContributionInfo } from './api/contribution-info.js';
+import type { ExtensionInfo } from './api/extension-info.js';
+import type { HistoryInfo } from './api/history-info.js';
+import type { IconInfo } from './api/icon-info.js';
+import type { ImageCheckerInfo } from './api/image-checker-info.js';
+import type { ImageInfo } from './api/image-info.js';
+import type { ImageInspectInfo } from './api/image-inspect-info.js';
+import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
+import type { NetworkInspectInfo } from './api/network-info.js';
+import type { NotificationCard, NotificationCardOptions } from './api/notification.js';
+import type { OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
+import type { V1Route } from './api/openshift-types.js';
+import type { PodInfo, PodInspectInfo } from './api/pod-info.js';
 import type {
   PreflightCheckEvent,
   PreflightChecksCallback,
@@ -39,129 +92,80 @@ import type {
   ProviderInfo,
   ProviderKubernetesConnectionInfo,
 } from './api/provider-info.js';
-import type { WebContents } from 'electron';
-import { app, ipcMain, BrowserWindow, shell, clipboard } from 'electron';
-import type {
-  ContainerCreateOptions,
-  ContainerInfo,
-  SimpleContainerInfo,
-  VolumeCreateOptions,
-  VolumeCreateResponseInfo,
-} from './api/container-info.js';
-import type { ImageInfo } from './api/image-info.js';
 import type { PullEvent } from './api/pull-event.js';
-import type { ExtensionInfo } from './api/extension-info.js';
-import type { ImageInspectInfo } from './api/image-inspect-info.js';
-import type { TrayMenu } from '../tray-menu.js';
-import { getFreePort, getFreePortRange, isFreePort } from './util/port.js';
-import { isLinux, isMac } from '../util.js';
-import type { MessageBoxOptions, MessageBoxReturnValue } from './message-box.js';
-import { MessageBox } from './message-box.js';
-import { ProgressImpl } from './progress-impl.js';
-import type { ContributionInfo } from './api/contribution-info.js';
-import { ContributionManager } from './contribution-manager.js';
-import { DockerDesktopInstallation } from './docker-extension/docker-desktop-installation.js';
-import { DockerPluginAdapter } from './docker-extension/docker-plugin-adapter.js';
-import { PAGE_EVENT_TYPE, Telemetry } from './telemetry/telemetry.js';
-import { StatusBarRegistry } from './statusbar/statusbar-registry.js';
-import type { StatusBarEntryDescriptor } from './statusbar/statusbar-registry.js';
-import type { IpcMainInvokeEvent } from 'electron/main';
-import type { ContainerInspectInfo } from './api/container-inspect-info.js';
-import type { HistoryInfo } from './api/history-info.js';
-import type { PodInfo, PodInspectInfo } from './api/pod-info.js';
+import type { ViewInfoUI } from './api/view-info.js';
 import type { VolumeInspectInfo, VolumeListInfo } from './api/volume-info.js';
-import type { ContainerStatsInfo } from './api/container-stats-info.js';
-import type {
-  PlayKubeInfo,
-  ContainerCreateOptions as PodmanContainerCreateOptions,
-} from './dockerode/libpod-dockerode.js';
-import type Dockerode from 'dockerode';
-import { AutostartEngine } from './autostart-engine.js';
-import { CloseBehavior } from './close-behavior.js';
-import { TrayIconColor } from './tray-icon-color.js';
-import { KubernetesClient } from './kubernetes-client.js';
-import type {
-  V1Pod,
-  V1ConfigMap,
-  V1NamespaceList,
-  V1PodList,
-  V1Service,
-  V1Ingress,
-  Context as KubernetesContext,
-  Cluster,
-  V1Deployment,
-  KubernetesObject,
-} from '@kubernetes/client-node';
-import type { V1Route } from './api/openshift-types.js';
-import type { NetworkInspectInfo } from './api/network-info.js';
-import { FilesystemMonitoring } from './filesystem-monitoring.js';
-import { Certificates } from './certificates.js';
-import { Proxy } from './proxy.js';
-import { EditorInit } from './editor-init.js';
-import { WelcomeInit } from './welcome/welcome-init.js';
-import { ExtensionInstaller } from './install/extension-installer.js';
-import { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
-import type { Menu } from '/@/plugin/menu-registry.js';
-import { MenuRegistry } from '/@/plugin/menu-registry.js';
-import { CancellationTokenRegistry } from './cancellation-token-registry.js';
-import type { UpdateCheckResult } from 'electron-updater';
-import { autoUpdater } from 'electron-updater';
-import type { ApiSenderType } from './api.js';
+import type { WebviewInfo } from './api/webview-info.js';
+import { AppearanceInit } from './appearance-init.js';
 import type { AuthenticationProviderInfo } from './authentication.js';
 import { AuthenticationImpl } from './authentication.js';
-import checkDiskSpacePkg from 'check-disk-space';
+import { AutostartEngine } from './autostart-engine.js';
+import { CancellationTokenRegistry } from './cancellation-token-registry.js';
+import { Certificates } from './certificates.js';
+import { CliToolRegistry } from './cli-tool-registry.js';
+import { CloseBehavior } from './close-behavior.js';
+import { ColorRegistry } from './color-registry.js';
+import { CommandRegistry } from './command-registry.js';
+import type { IConfigurationPropertyRecordedSchema } from './configuration-registry.js';
+import { ConfigurationRegistry } from './configuration-registry.js';
+import { ContainerProviderRegistry } from './container-registry.js';
+import { Context } from './context/context.js';
+import { ContributionManager } from './contribution-manager.js';
+import { CustomPickRegistry } from './custompick/custompick-registry.js';
+import { DialogRegistry } from './dialog-registry.js';
+import { Directories } from './directories.js';
+import { DockerDesktopInstallation } from './docker-extension/docker-desktop-installation.js';
+import { DockerPluginAdapter } from './docker-extension/docker-plugin-adapter.js';
+import type {
+  ContainerCreateOptions as PodmanContainerCreateOptions,
+  PlayKubeInfo,
+} from './dockerode/libpod-dockerode.js';
+import { EditorInit } from './editor-init.js';
+import { ExtensionLoader } from './extension-loader.js';
+import { ExtensionsCatalog } from './extensions-catalog/extensions-catalog.js';
+import type { CatalogExtension } from './extensions-catalog/extensions-catalog-api.js';
+import { ExtensionsUpdater } from './extensions-updater/extensions-updater.js';
+import { Featured } from './featured/featured.js';
+import type { FeaturedExtension } from './featured/featured-api.js';
+import { FilesystemMonitoring } from './filesystem-monitoring.js';
+import { IconRegistry } from './icon-registry.js';
+import { ImageCheckerImpl } from './image-checker.js';
+import { ImageRegistry } from './image-registry.js';
+import { InputQuickPickRegistry } from './input-quickpick/input-quickpick-registry.js';
+import { ExtensionInstaller } from './install/extension-installer.js';
+import { KubernetesClient } from './kubernetes-client.js';
+import type { KubeContext } from './kubernetes-context.js';
+import type { ContextGeneralState, ResourceName } from './kubernetes-context-state.js';
+import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
+import { downloadGuideList } from './learning-center/learning-center.js';
+import type { MessageBoxOptions, MessageBoxReturnValue } from './message-box.js';
+import { MessageBox } from './message-box.js';
+import { NotificationRegistry } from './notification-registry.js';
+import { OnboardingRegistry } from './onboarding-registry.js';
+import { OpenDevToolsInit } from './open-devtools-init.js';
+import { ProgressImpl } from './progress-impl.js';
+import { ProviderRegistry } from './provider-registry.js';
+import { Proxy } from './proxy.js';
+import { RecommendationsRegistry } from './recommendations/recommendations-registry.js';
+import { SafeStorageRegistry } from './safe-storage/safe-storage-registry.js';
+import type { StatusBarEntryDescriptor } from './statusbar/statusbar-registry.js';
+import { StatusBarRegistry } from './statusbar/statusbar-registry.js';
+import { PAGE_EVENT_TYPE, Telemetry } from './telemetry/telemetry.js';
+import { TerminalInit } from './terminal-init.js';
+import { TrayIconColor } from './tray-icon-color.js';
+import { TrayMenuRegistry } from './tray-menu-registry.js';
+import { Troubleshooting } from './troubleshooting.js';
+import type { IDisposable } from './types/disposable.js';
+import type { Deferred } from './util/deferred.js';
+import { Exec } from './util/exec.js';
+import { getFreePort, getFreePortRange, isFreePort } from './util/port.js';
+import { ViewRegistry } from './view-registry.js';
+import { WebviewRegistry } from './webview/webview-registry.js';
+import { WelcomeInit } from './welcome/welcome-init.js';
 // workaround for ESM
 const checkDiskSpace: (path: string) => Promise<{ free: number }> = checkDiskSpacePkg as unknown as (
   path: string,
 ) => Promise<{ free: number }>;
-import { TaskManager } from '/@/plugin/task-manager.js';
-import { Featured } from './featured/featured.js';
-import type { FeaturedExtension } from './featured/featured-api.js';
-import { ExtensionsCatalog } from './extensions-catalog/extensions-catalog.js';
-import { securityRestrictionCurrentHandler } from '../security-restrictions-handler.js';
-import { ExtensionsUpdater } from './extensions-updater/extensions-updater.js';
-import type { CatalogExtension } from './extensions-catalog/extensions-catalog-api.js';
-import { IconRegistry } from './icon-registry.js';
-import type { IconInfo } from './api/icon-info.js';
-import { Directories } from './directories.js';
-import { CustomPickRegistry } from './custompick/custompick-registry.js';
-import { ViewRegistry } from './view-registry.js';
-import type { ViewInfoUI } from './api/view-info.js';
-import type { WebviewInfo } from './api/webview-info.js';
-import { Context } from './context/context.js';
-import { OnboardingRegistry } from './onboarding-registry.js';
-import type { OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
-import { Exec } from './util/exec.js';
-import { KubeGeneratorRegistry } from '/@/plugin/kube-generator-registry.js';
-import type {
-  KubernetesGeneratorSelector,
-  GenerateKubeResult,
-  KubernetesGeneratorArgument,
-} from '/@/plugin/kube-generator-registry.js';
-import type { KubernetesGeneratorInfo } from '/@/plugin/api/KubernetesGeneratorInfo.js';
-import type { CommandInfo } from './api/command-info.js';
-import { CliToolRegistry } from './cli-tool-registry.js';
-import type { CliToolInfo } from './api/cli-tool-info.js';
-import type { NotificationCard, NotificationCardOptions } from './api/notification.js';
-import { NotificationRegistry } from './notification-registry.js';
-import { ImageCheckerImpl } from './image-checker.js';
-import type { ImageCheckerInfo } from './api/image-checker-info.js';
-import { AppearanceInit } from './appearance-init.js';
-import type { KubeContext } from './kubernetes-context.js';
-import { Troubleshooting } from './troubleshooting.js';
-import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
-import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
-import { OpenDevToolsInit } from './open-devtools-init.js';
-import { NavigationManager } from '/@/plugin/navigation/navigation-manager.js';
-import { WebviewRegistry } from './webview/webview-registry.js';
-import type { IDisposable } from './types/disposable.js';
-import { KubernetesUtils } from './kubernetes-util.js';
-import { downloadGuideList } from './learning-center/learning-center.js';
-import type { ColorInfo } from './api/color-info.js';
-import { ColorRegistry } from './color-registry.js';
-import { DialogRegistry } from './dialog-registry.js';
-import type { Deferred } from './util/deferred.js';
-import type { ContextState } from './kubernetes-context-state.js';
 
 type LogType = 'log' | 'warn' | 'trace' | 'debug' | 'error';
 
@@ -210,7 +214,7 @@ export class PluginSystem {
   // this is needed because on the client it will display
   // a generic error message 'Error invoking remote method' and
   // it's not useful for end user
-  encodeIpcError(e: unknown) {
+  encodeIpcError(e: unknown): { name?: string; message: unknown; extra?: Record<string, unknown> } {
     let builtError;
     if (e instanceof Error) {
       builtError = { name: e.name, message: e.message, extra: { ...e } };
@@ -221,7 +225,7 @@ export class PluginSystem {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ipcHandle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<void> | any) {
+  ipcHandle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<void> | any): any {
     ipcMain.handle(channel, async (...args) => {
       try {
         return { result: await Promise.resolve(listener(...args)) };
@@ -234,7 +238,7 @@ export class PluginSystem {
   // Create an Error to access stack trace
   // Match a regex for the file name and return it
   // return nothing if file name not found
-  async getExtName() {
+  async getExtName(): Promise<string | undefined> {
     //Create an error for its stack property
     const stack = new Error().stack;
     //Create a map for extension path => extension name
@@ -272,7 +276,7 @@ export class PluginSystem {
   redirectConsole(logType: LogType): void {
     // keep original method
     const originalConsoleMethod = console[logType];
-    console[logType] = (...args) => {
+    console[logType] = (...args): void => {
       this.getExtName()
         .then(extName => {
           if (extName) args.unshift(extName);
@@ -296,7 +300,7 @@ export class PluginSystem {
   }
 
   // setup pipe/redirect for console.log, console.warn, console.trace, console.debug, console.error
-  redirectLogging() {
+  redirectLogging(): void {
     const logTypes: LogType[] = ['log', 'warn', 'trace', 'debug', 'error'];
     logTypes.forEach(logType => this.redirectConsole(logType));
   }
@@ -304,7 +308,7 @@ export class PluginSystem {
   getApiSender(webContents: WebContents): ApiSenderType {
     const queuedEvents: { channel: string; data: unknown }[] = [];
 
-    const flushQueuedEvents = () => {
+    const flushQueuedEvents = (): void => {
       // flush queued events ?
       if (this.uiReady && this.isReady && queuedEvents.length > 0) {
         console.log(`Delayed startup, flushing ${queuedEvents.length} events`);
@@ -323,7 +327,7 @@ export class PluginSystem {
 
     const eventEmitter = new EventEmitter();
     return {
-      send: (channel: string, data: unknown) => {
+      send: (channel: string, data: unknown): void => {
         // send only when the UI is ready
         if (this.uiReady && this.isReady) {
           flushQueuedEvents();
@@ -337,7 +341,7 @@ export class PluginSystem {
       receive: (channel: string, func: (...args: unknown[]) => void): IDisposable => {
         eventEmitter.on(channel, func);
         return {
-          dispose: () => {
+          dispose: (): void => {
             eventEmitter.removeListener(channel, func);
           },
         };
@@ -345,9 +349,9 @@ export class PluginSystem {
     };
   }
 
-  async setupSecurityRestrictionsOnLinks(messageBox: MessageBox) {
+  async setupSecurityRestrictionsOnLinks(messageBox: MessageBox): Promise<void> {
     // external URLs should be validated by the user
-    securityRestrictionCurrentHandler.handler = async (url: string) => {
+    securityRestrictionCurrentHandler.handler = async (url: string): Promise<boolean> => {
       if (!url) {
         return false;
       }
@@ -409,6 +413,9 @@ export class PluginSystem {
     const directories = new Directories();
     const statusBarRegistry = new StatusBarRegistry(apiSender);
 
+    const safeStorageRegistry = new SafeStorageRegistry(directories);
+    await safeStorageRegistry.init();
+
     const configurationRegistry = new ConfigurationRegistry(apiSender, directories);
     notifications.push(...configurationRegistry.init());
 
@@ -454,6 +461,11 @@ export class PluginSystem {
     await kubernetesClient.init();
     const closeBehaviorConfiguration = new CloseBehavior(configurationRegistry);
     await closeBehaviorConfiguration.init();
+
+    const recommendationsRegistry = new RecommendationsRegistry(configurationRegistry);
+    recommendationsRegistry.init();
+
+    const messageBox = new MessageBox(apiSender);
 
     // Don't show the tray icon options on Mac
     if (!isMac()) {
@@ -522,188 +534,8 @@ export class PluginSystem {
       undefined,
     );
 
-    // Get the current version of our application
-    const currentVersion = `v${app.getVersion()}`;
-
-    // Add version entry to the status bar
-    const defaultVersionEntry = () => {
-      statusBarRegistry.setEntry(
-        'version',
-        false,
-        0,
-        currentVersion,
-        `Using version ${currentVersion}`,
-        undefined,
-        true,
-        'version',
-        undefined,
-      );
-    };
-    defaultVersionEntry();
-
-    // Show a "No update available" only for macOS and Windows users and on production builds
-    let detailMessage: string;
-    if (!isLinux() && import.meta.env.PROD) {
-      detailMessage = 'No update available';
-    }
-
-    // Register command 'version' that will display the current version and say that no update is available.
-    // Only show the "no update available" command for macOS and Windows users, not linux users.
-    commandRegistry.registerCommand('version', async () => {
-      await messageBox.showMessageBox({
-        type: 'info',
-        title: 'Version',
-        message: `Using version ${currentVersion}`,
-        detail: detailMessage,
-      });
-    });
-
-    // Only check on production builds for Windows and macOS users
-    if (import.meta.env.PROD && !isLinux()) {
-      // disable auto download
-      autoUpdater.autoDownload = false;
-
-      let updateInProgress = false;
-      let updateAlreadyDownloaded = false;
-
-      // setup the event listeners
-      autoUpdater.on('update-available', () => {
-        updateInProgress = false;
-        updateAlreadyDownloaded = false;
-
-        // Update the 'version' entry in the status bar to show that an update is available
-        // this uses setEntry to update the existing entry
-        statusBarRegistry.setEntry(
-          'version',
-          false,
-          0,
-          currentVersion,
-          'Update available',
-          UPDATER_UPDATE_AVAILABLE_ICON,
-          true,
-          'update',
-          undefined,
-          true,
-        );
-      });
-
-      autoUpdater.on('update-not-available', () => {
-        updateInProgress = false;
-        updateAlreadyDownloaded = false;
-
-        // Update the 'version' entry in the status bar to show that no update is available
-        defaultVersionEntry();
-      });
-
-      autoUpdater.on('update-downloaded', () => {
-        updateAlreadyDownloaded = true;
-        updateInProgress = false;
-        messageBox
-          .showMessageBox({
-            title: 'Update Downloaded',
-            message: 'Update downloaded, Do you want to restart Podman Desktop ?',
-            cancelId: 1,
-            type: 'info',
-            buttons: ['Restart', 'Cancel'],
-          })
-          .then(result => {
-            if (result.response === 0) {
-              setImmediate(() => autoUpdater.quitAndInstall());
-            }
-          })
-          .catch((error: unknown) => {
-            console.error('unable to show message box', error);
-          });
-      });
-
-      autoUpdater.on('error', error => {
-        updateInProgress = false;
-        // local build not pushed to GitHub so prevent any 'update'
-        if (error?.message?.includes('No published versions on GitHub')) {
-          console.log('Cannot check for updates, no published versions on GitHub');
-          defaultVersionEntry();
-          return;
-        }
-        console.error('unable to check for updates', error);
-      });
-
-      // check for updates now
-      let updateCheckResult: UpdateCheckResult | null;
-
-      try {
-        updateCheckResult = await autoUpdater.checkForUpdates();
-      } catch (error) {
-        console.error('unable to check for updates', error);
-      }
-
-      // Create an interval to check for updates every 12 hours
-      setInterval(
-        () => {
-          autoUpdater
-            .checkForUpdates()
-            .then(result => (updateCheckResult = result))
-            .catch((error: unknown) => {
-              console.log('unable to check for updates', error);
-            });
-        },
-        1000 * 60 * 60 * 12,
-      );
-
-      // Update will create a standard "autoUpdater" dialog / update process
-      commandRegistry.registerCommand('update', async () => {
-        if (updateAlreadyDownloaded) {
-          const result = await messageBox.showMessageBox({
-            type: 'info',
-            title: 'Update',
-            message: 'There is already an update downloaded. Please Restart Podman Desktop.',
-            cancelId: 1,
-            buttons: ['Restart', 'Cancel'],
-          });
-          if (result.response === 0) {
-            setImmediate(() => autoUpdater.quitAndInstall());
-          }
-          return;
-        }
-
-        if (updateInProgress) {
-          await messageBox.showMessageBox({
-            type: 'info',
-            title: 'Update',
-            message: 'There is already an update in progress. Please wait until it is downloaded',
-            buttons: ['OK'],
-          });
-          return;
-        }
-
-        // Get the version of the update
-        const updateVersion = updateCheckResult?.updateInfo.version ? `v${updateCheckResult?.updateInfo.version}` : '';
-
-        const result = await messageBox.showMessageBox({
-          type: 'info',
-          title: 'Update Available',
-          message: `A new version ${updateVersion} of Podman Desktop is available. Do you want to update your current version ${currentVersion}?`,
-          buttons: ['Update', 'Cancel'],
-          cancelId: 1,
-        });
-        if (result.response === 0) {
-          updateInProgress = true;
-          updateAlreadyDownloaded = false;
-
-          // Download update and try / catch it and create a dialog if it fails
-          try {
-            await autoUpdater.downloadUpdate();
-          } catch (error) {
-            console.error('Update error: ', error);
-            await messageBox.showMessageBox({
-              type: 'error',
-              title: 'Update Failed',
-              message: `An error occurred while trying to update to version ${updateVersion}. See the developer console for more information.`,
-              buttons: ['OK'],
-            });
-          }
-        }
-      });
-    }
+    // Init update logic
+    new Updater(messageBox, configurationRegistry, statusBarRegistry, commandRegistry).init();
 
     commandRegistry.registerCommand('feedback', () => {
       apiSender.send('display-feedback', '');
@@ -738,8 +570,6 @@ export class PluginSystem {
     const welcomeInit = new WelcomeInit(configurationRegistry);
     welcomeInit.init();
 
-    const messageBox = new MessageBox(apiSender);
-
     const authentication = new AuthenticationImpl(apiSender);
 
     const cliToolRegistry = new CliToolRegistry(apiSender, exec, telemetry);
@@ -762,10 +592,6 @@ export class PluginSystem {
       contributionManager,
       webviewRegistry,
     );
-
-    // init kubernetes configuration
-    const kubernetesUtils = new KubernetesUtils(configurationRegistry);
-    kubernetesUtils.init();
 
     this.extensionLoader = new ExtensionLoader(
       commandRegistry,
@@ -1262,6 +1088,13 @@ export class PluginSystem {
             abortController,
           },
         );
+      },
+    );
+
+    this.ipcHandle(
+      'container-provider-registry:exportContainer',
+      async (_listener, engine: string, options: ContainerExportOptions): Promise<void> => {
+        return containerProviderRegistry.exportContainer(engine, options);
       },
     );
 
@@ -2013,8 +1846,15 @@ export class PluginSystem {
 
     this.ipcHandle(
       'kubernetes-client:applyResourcesFromFile',
-      async (_listener, context: string, file: string): Promise<KubernetesObject[]> => {
-        return kubernetesClient.applyResourcesFromFile(context, file);
+      async (_listener, context: string, file: string, namespace?: string): Promise<KubernetesObject[]> => {
+        return kubernetesClient.applyResourcesFromFile(context, file, namespace);
+      },
+    );
+
+    this.ipcHandle(
+      'kubernetes-client:applyResourcesFromYAML',
+      async (_listener, context: string, yaml: string): Promise<KubernetesObject[]> => {
+        return kubernetesClient.applyResourcesFromYAML(context, yaml);
       },
     );
 
@@ -2085,9 +1925,27 @@ export class PluginSystem {
       return kubernetesClient.setContext(contextName);
     });
 
-    this.ipcHandle('kubernetes-client:getContextsState', async (): Promise<Map<string, ContextState>> => {
-      return kubernetesClient.getContextsState();
+    this.ipcHandle('kubernetes-client:getContextsGeneralState', async (): Promise<Map<string, ContextGeneralState>> => {
+      return kubernetesClient.getContextsGeneralState();
     });
+
+    this.ipcHandle('kubernetes-client:getCurrentContextGeneralState', async (): Promise<ContextGeneralState> => {
+      return kubernetesClient.getCurrentContextGeneralState();
+    });
+
+    this.ipcHandle(
+      'kubernetes-client:registerGetCurrentContextResources',
+      async (_listener, resourceName: ResourceName): Promise<KubernetesObject[]> => {
+        return kubernetesClient.registerGetCurrentContextResources(resourceName);
+      },
+    );
+
+    this.ipcHandle(
+      'kubernetes-client:unregisterGetCurrentContextResources',
+      async (_listener, resourceName: ResourceName): Promise<KubernetesObject[]> => {
+        return kubernetesClient.unregisterGetCurrentContextResources(resourceName);
+      },
+    );
 
     this.ipcHandle('feedback:send', async (_listener, feedbackProperties: unknown): Promise<void> => {
       return telemetry.sendFeedback(feedbackProperties);
@@ -2272,6 +2130,10 @@ export class PluginSystem {
         });
       },
     );
+    this.ipcHandle(
+      'context:collectAllValues',
+      async (): Promise<Record<string, unknown>> => context.collectAllValues(),
+    );
 
     const dockerDesktopInstallation = new DockerDesktopInstallation(
       apiSender,
@@ -2290,6 +2152,8 @@ export class PluginSystem {
       imageRegistry,
       extensionsCatalog,
       telemetry,
+      directories,
+      contributionManager,
     );
     await extensionInstaller.init();
 
@@ -2330,16 +2194,16 @@ export class PluginSystem {
 
   getLogHandler(channel: string, loggerId: string): LoggerWithEnd {
     return {
-      log: (...data: unknown[]) => {
+      log: (...data: unknown[]): void => {
         this.getWebContentsSender().send(channel, loggerId, 'log', data);
       },
-      warn: (...data: unknown[]) => {
+      warn: (...data: unknown[]): void => {
         this.getWebContentsSender().send(channel, loggerId, 'warn', data);
       },
-      error: (...data: unknown[]) => {
+      error: (...data: unknown[]): void => {
         this.getWebContentsSender().send(channel, loggerId, 'error', data);
       },
-      onEnd: () => {
+      onEnd: (): void => {
         this.getWebContentsSender().send(channel, loggerId, 'finish');
       },
     };

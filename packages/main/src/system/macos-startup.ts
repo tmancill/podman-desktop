@@ -16,9 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { app } from 'electron';
+
 import type { ConfigurationRegistry } from '../plugin/configuration-registry.js';
 
 /**
@@ -54,7 +56,7 @@ export class MacosStartup {
     return true;
   }
 
-  async enable() {
+  async enable(): Promise<void> {
     // Check the preferences for login.minimize has been enabled
     // as this may change each time it's enabled (changed from true to false, etc.)
     // it's also to make sure that settings weren't changed while async function was running
@@ -104,7 +106,7 @@ export class MacosStartup {
     );
   }
 
-  async disable() {
+  async disable(): Promise<void> {
     // remove the file at this.podmanDesktopBinaryPath only if it exists
     if (fs.existsSync(this.plistFile)) {
       await fs.promises.unlink(this.plistFile);

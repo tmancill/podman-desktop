@@ -1,19 +1,22 @@
 <script lang="ts">
-import { onMount } from 'svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import DetailsPage from '../ui/DetailsPage.svelte';
-import Tab from '../ui/Tab.svelte';
-import StateChange from '../ui/StateChange.svelte';
 import type { V1Ingress } from '@kubernetes/client-node';
+import { onMount } from 'svelte';
 import { stringify } from 'yaml';
+
+import { kubernetesCurrentContextIngresses } from '/@/stores/kubernetes-contexts-state';
+
+import Route from '../../Route.svelte';
 import MonacoEditor from '../editor/MonacoEditor.svelte';
-import type { IngressUI } from './IngressUI';
+import ServiceIcon from '../images/ServiceIcon.svelte';
+import StatusIcon from '../images/StatusIcon.svelte';
+import KubeEditYAML from '../kube/KubeEditYAML.svelte';
+import DetailsPage from '../ui/DetailsPage.svelte';
+import StateChange from '../ui/StateChange.svelte';
+import Tab from '../ui/Tab.svelte';
 import { IngressRouteUtils } from './ingress-route-utils';
-import { ingresses } from '/@/stores/ingresses';
 import IngressRouteActions from './IngressRouteActions.svelte';
 import ServiceDetailsSummary from './IngressRouteDetailsSummary.svelte';
-import ServiceIcon from '../images/ServiceIcon.svelte';
-import Route from '../../Route.svelte';
+import type { IngressUI } from './IngressUI';
 
 export let name: string;
 export let namespace: string;
@@ -26,7 +29,7 @@ let kubeError: string;
 onMount(() => {
   const ingressRouteUtils = new IngressRouteUtils();
 
-  return ingresses.subscribe(ingress => {
+  return kubernetesCurrentContextIngresses.subscribe(ingress => {
     const matchingIngress = ingress.find(srv => srv.metadata?.name === name && srv.metadata?.namespace === namespace);
     if (matchingIngress) {
       try {
@@ -68,13 +71,13 @@ async function loadIngressDetails() {
     </svelte:fragment>
     <svelte:fragment slot="content">
       <Route path="/summary" breadcrumb="Summary" navigationHint="tab">
-        <ServiceDetailsSummary ingressRouteUI="{ingressUI}" ingressRoute="{kubeService}" kubeError="{kubeError}" />
+        <ServiceDetailsSummary ingressRoute="{kubeService}" kubeError="{kubeError}" />
       </Route>
       <Route path="/inspect" breadcrumb="Inspect" navigationHint="tab">
         <MonacoEditor content="{JSON.stringify(kubeService, undefined, 2)}" language="json" />
       </Route>
       <Route path="/kube" breadcrumb="Kube" navigationHint="tab">
-        <MonacoEditor content="{stringify(kubeService)}" language="yaml" />
+        <KubeEditYAML content="{stringify(kubeService)}" />
       </Route>
     </svelte:fragment>
   </DetailsPage>

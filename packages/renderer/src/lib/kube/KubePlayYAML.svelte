@@ -1,21 +1,24 @@
 <script lang="ts">
-import { onMount, onDestroy } from 'svelte';
+import { onDestroy, onMount } from 'svelte';
 import type { Unsubscriber } from 'svelte/store';
+
 import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
+
 let providerUnsubscribe: Unsubscriber;
+
+import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
+import type { V1NamespaceList } from '@kubernetes/client-node/dist/api';
+import { Input } from '@podman-desktop/ui-svelte';
+import Fa from 'svelte-fa';
 
 import { providerInfos } from '../../stores/providers';
 import MonacoEditor from '../editor/MonacoEditor.svelte';
 import NoContainerEngineEmptyScreen from '../image/NoContainerEngineEmptyScreen.svelte';
-import FormPage from '../ui/FormPage.svelte';
 import KubePlayIcon from '../kube/KubePlayIcon.svelte';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import WarningMessage from '../ui/WarningMessage.svelte';
-import type { V1NamespaceList } from '@kubernetes/client-node/dist/api';
-import { faCircleCheck } from '@fortawesome/free-solid-svg-icons';
-import Fa from 'svelte-fa';
 import Button from '../ui/Button.svelte';
-import Input from '/@/lib/ui/Input.svelte';
+import ErrorMessage from '../ui/ErrorMessage.svelte';
+import FormPage from '../ui/FormPage.svelte';
+import WarningMessage from '../ui/WarningMessage.svelte';
 
 let runStarted = false;
 let runFinished = false;
@@ -166,7 +169,7 @@ async function getKubernetesfileLocation() {
 {/if}
 
 {#if providerConnections.length > 0}
-  <FormPage title="Play Pods or Containers from a Kubernetes YAML File" inProgress="{runStarted && !runFinished}">
+  <FormPage title="Create pods from a Kubernetes YAML file" inProgress="{runStarted && !runFinished}">
     <KubePlayIcon slot="icon" size="30px" />
 
     <div slot="content" class="p-5 min-w-full h-fit">
@@ -188,7 +191,7 @@ async function getKubernetesfileLocation() {
         </div>
 
         <div>
-          <div class="text-sm font-bold text-gray-400 pb-2">Select Runtime:</div>
+          <div class="text-sm font-bold text-gray-400 pb-2">Select runtime:</div>
 
           <div class="px-5">
             <div class="flex flex-col space-y-3">

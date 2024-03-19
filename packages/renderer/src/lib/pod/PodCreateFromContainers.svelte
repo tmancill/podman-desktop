@@ -1,20 +1,21 @@
 <script lang="ts">
-import { providerInfos } from '../../stores/providers';
-import { onDestroy, onMount } from 'svelte';
-import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
-import { type PodCreation, podCreationHolder } from '../../stores/creation-from-containers-store';
-import FormPage from '../ui/FormPage.svelte';
-import { router } from 'tinro';
-import type { Unsubscriber } from 'svelte/store';
-import ErrorMessage from '../ui/ErrorMessage.svelte';
-import StatusIcon from '../images/StatusIcon.svelte';
-import ContainerIcon from '../images/ContainerIcon.svelte';
 import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+import { Input } from '@podman-desktop/ui-svelte';
+import { onDestroy, onMount } from 'svelte';
+import type { Unsubscriber } from 'svelte/store';
 import Fa from 'svelte-fa';
-import SolidPodIcon from '../images/SolidPodIcon.svelte';
-import Button from '../ui/Button.svelte';
+import { router } from 'tinro';
+
+import type { ProviderContainerConnectionInfo, ProviderInfo } from '../../../../main/src/plugin/api/provider-info';
 import type { PodCreatePortOptions } from '../../../../main/src/plugin/dockerode/libpod-dockerode';
-import Input from '/@/lib/ui/Input.svelte';
+import { type PodCreation, podCreationHolder } from '../../stores/creation-from-containers-store';
+import { providerInfos } from '../../stores/providers';
+import ContainerIcon from '../images/ContainerIcon.svelte';
+import SolidPodIcon from '../images/SolidPodIcon.svelte';
+import StatusIcon from '../images/StatusIcon.svelte';
+import Button from '../ui/Button.svelte';
+import ErrorMessage from '../ui/ErrorMessage.svelte';
+import FormPage from '../ui/FormPage.svelte';
 
 let podCreation: PodCreation;
 let createInProgress = false;
@@ -206,7 +207,7 @@ function updatePortExposure(port: number, checked: boolean) {
             <div class="bg-charcoal-600 border-t-2 border-amber-500 p-4 mb-2" role="alert" aria-label="warning">
               <div class="flex flex-row">
                 <div class="mr-3">
-                  <Fa size="18" class="text-amber-400" icon="{faTriangleExclamation}" />
+                  <Fa size="1.125x" class="text-amber-400" icon="{faTriangleExclamation}" />
                 </div>
                 <div class="flex flex-col">
                   <div class="text-sm text-amber-400">Possible runtime error</div>

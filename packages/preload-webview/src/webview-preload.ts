@@ -16,12 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { WebviewInfo } from '../../main/src/plugin/api/webview-info';
-import type { ColorInfo } from '../../main/src/plugin/api/color-info';
-import { AppearanceSettings } from '../../main/src/plugin/appearance-settings';
-
 import type { IpcRendererEvent } from 'electron';
 import { contextBridge, ipcRenderer } from 'electron';
+
+import type { ColorInfo } from '../../main/src/plugin/api/color-info';
+import type { WebviewInfo } from '../../main/src/plugin/api/webview-info';
+import { AppearanceSettings } from '../../main/src/plugin/appearance-settings';
 
 interface ErrorMessage {
   name: string;
@@ -40,7 +40,7 @@ export class WebviewPreload {
     this.#webviewId = webviewId;
   }
 
-  protected decodeError(error: ErrorMessage) {
+  protected decodeError(error: ErrorMessage): Error {
     const e = new Error(error.message);
     e.name = error.name;
     Object.assign(e, error.extra);
@@ -55,13 +55,13 @@ export class WebviewPreload {
     return result;
   }
 
-  protected postWebviewMessage(message: unknown) {
+  protected postWebviewMessage(message: unknown): void {
     this.ipcInvoke('webviewRegistry:post-message', this.#webviewInfo?.id, message).catch((error: unknown) =>
       console.error('Error while posting message', error),
     );
   }
 
-  protected changeContent() {
+  protected changeContent(): void {
     if (!this.#webviewInfo) {
       return;
     }
@@ -166,7 +166,7 @@ export class WebviewPreload {
     return this.ipcInvoke('webviewRegistry:listWebviews') as Promise<WebviewInfo[]>;
   }
 
-  protected ipcRendererOn(channel: string, listener: (event: IpcRendererEvent, ...args: unknown[]) => void) {
+  protected ipcRendererOn(channel: string, listener: (event: IpcRendererEvent, ...args: unknown[]) => void): void {
     ipcRenderer.on(channel, listener);
   }
 

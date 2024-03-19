@@ -18,10 +18,17 @@
 
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
+import { homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { PassThrough } from 'node:stream';
+
 import type {
   Cluster,
   Context,
+  KubernetesListObject,
   KubernetesObject,
+  ListPromise,
   V1APIGroup,
   V1APIResource,
   V1ConfigMap,
@@ -29,48 +36,44 @@ import type {
   V1Deployment,
   V1Ingress,
   V1NamespaceList,
+  V1ObjectMeta,
   V1Pod,
   V1PodList,
   V1Service,
-  V1ObjectMeta,
-  ListPromise,
-  KubernetesListObject,
 } from '@kubernetes/client-node';
 import {
   ApisApi,
   AppsV1Api,
   CoreV1Api,
   CustomObjectsApi,
+  HttpError,
   KubeConfig,
+  KubernetesObjectApi,
   Log,
   makeInformer,
   NetworkingV1Api,
   V1DeleteOptions,
   VersionApi,
   Watch,
-  KubernetesObjectApi,
-  HttpError,
 } from '@kubernetes/client-node';
-import type { V1Route } from './api/openshift-types.js';
 import type * as containerDesktopAPI from '@podman-desktop/api';
-import { Emitter } from './events/emitter.js';
-import { Uri } from './types/uri.js';
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
-import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
-import type { FilesystemMonitoring } from './filesystem-monitoring.js';
-import type { PodInfo } from './api/pod-info.js';
-import { PassThrough } from 'node:stream';
-import type { ApiSenderType } from './api.js';
-import { parseAllDocuments } from 'yaml';
-import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
 import * as jsYaml from 'js-yaml';
-import type { KubeContext } from './kubernetes-context.js';
-import type { KubernetesInformerManager } from './kubernetes-informer-registry.js';
+import { parseAllDocuments } from 'yaml';
+
+import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
+
+import type { ApiSenderType } from './api.js';
 import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
-import type { IncomingMessage } from 'node:http';
+import type { V1Route } from './api/openshift-types.js';
+import type { PodInfo } from './api/pod-info.js';
+import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
+import { Emitter } from './events/emitter.js';
+import type { FilesystemMonitoring } from './filesystem-monitoring.js';
+import type { KubeContext } from './kubernetes-context.js';
+import type { ContextGeneralState, ResourceName } from './kubernetes-context-state.js';
 import { ContextsManager } from './kubernetes-context-state.js';
-import type { ContextState } from './kubernetes-context-state.js';
+import type { KubernetesInformerManager } from './kubernetes-informer-registry.js';
+import { Uri } from './types/uri.js';
 
 interface KubernetesObjectWithKind extends KubernetesObject {
   kind: string;
@@ -118,6 +121,8 @@ function toPodInfo(pod: V1Pod, contextName?: string): PodInfo {
 const OPENSHIFT_PROJECT_API_GROUP = 'project.openshift.io';
 
 const DEFAULT_NAMESPACE = 'default';
+
+const FIELD_MANAGER = 'podman-desktop';
 
 /**
  * Handle calls to kubernetes API
@@ -233,11 +238,13 @@ export class KubernetesClient {
     this.kubeConfigWatcher.onDidCreate(async () => {
       this._onDidUpdateKubeconfig.fire({ type: 'CREATE', location });
       await this.refresh();
+      this.apiSender.send('kubernetes-context-update');
     });
 
     this.kubeConfigWatcher.onDidDelete(() => {
       this._onDidUpdateKubeconfig.fire({ type: 'DELETE', location });
       this.kubeConfig = new KubeConfig();
+      this.apiSender.send('kubernetes-context-update');
     });
   }
 
@@ -245,7 +252,7 @@ export class KubernetesClient {
     return new Watch(this.kubeConfig);
   }
 
-  setupKubeWatcher() {
+  setupKubeWatcher(): void {
     this.kubeWatcher?.abort();
     const ns = this.currentNamespace;
     if (ns) {
@@ -273,7 +280,7 @@ export class KubernetesClient {
     }
   }
 
-  async fetchAPIGroups() {
+  async fetchAPIGroups(): Promise<void> {
     this.apiGroups = [];
     try {
       if (this.kubeConfig) {
@@ -390,7 +397,7 @@ export class KubernetesClient {
     this.apiSender.send('kubernetes-context-update');
   }
 
-  async saveKubeConfig(config: KubeConfig) {
+  async saveKubeConfig(config: KubeConfig): Promise<void> {
     const jsonString = config.exportConfig();
     const yamlString = jsYaml.dump(JSON.parse(jsonString));
     await fs.promises.writeFile(this.kubeconfigPath, yamlString);
@@ -438,7 +445,7 @@ export class KubernetesClient {
     return namespace;
   }
 
-  async refresh() {
+  async refresh(): Promise<void> {
     // check the file is empty
     const fileContent = await fs.promises.readFile(this.kubeconfigPath);
     if (fileContent.length === 0) {
@@ -744,11 +751,11 @@ export class KubernetesClient {
     ns: string,
     timeoutMs: number,
     pollIntervalMs: number,
-  ) {
+  ): Promise<void> {
     const startTime = Date.now();
     const timeout = startTime + timeoutMs;
 
-    const checkPodStatus = async () => {
+    const checkPodStatus = async (): Promise<void> => {
       try {
         const response = await coreApi.readNamespacedPodStatus(name, ns);
         if (
@@ -777,7 +784,7 @@ export class KubernetesClient {
     await checkPodStatus();
   }
 
-  private isPodRestarting(namespace: string, name: string) {
+  private isPodRestarting(namespace: string, name: string): boolean {
     if (this.restartingPods.has(namespace)) {
       const names = this.restartingPods.get(namespace);
       if (names && names.includes(name)) {
@@ -788,7 +795,7 @@ export class KubernetesClient {
     return false;
   }
 
-  private markPodRestarting(namespace: string, name: string) {
+  private markPodRestarting(namespace: string, name: string): void {
     if (this.restartingPods.has(namespace)) {
       const names = this.restartingPods.get(namespace);
       if (names) {
@@ -799,7 +806,7 @@ export class KubernetesClient {
     }
   }
 
-  private unmarkPodRestarting(namespace: string, name: string) {
+  private unmarkPodRestarting(namespace: string, name: string): void {
     if (this.restartingPods.has(namespace)) {
       const names = this.restartingPods.get(namespace);
       if (names) {
@@ -1125,7 +1132,7 @@ export class KubernetesClient {
         const newTag = { ...tag };
         newTag.test = /^(0[0-7][0-7][0-7])$/;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newTag.resolve = (str: any) => parseInt(str, 8);
+        newTag.resolve = (str: any): number => parseInt(str, 8);
         tags.unshift(newTag);
         break;
       }
@@ -1181,6 +1188,9 @@ export class KubernetesClient {
    */
   async createResourcesFromFile(context: string, filePath: string, namespace?: string): Promise<void> {
     const manifests = await this.loadManifestsFromFile(filePath);
+    if (manifests.filter(s => s?.kind).length === 0) {
+      throw new Error('No valid Kubernetes resources found in file');
+    }
     await this.syncResources(context, manifests, 'create', namespace);
   }
 
@@ -1207,7 +1217,33 @@ export class KubernetesClient {
    */
   async applyResourcesFromFile(context: string, filePath: string, namespace?: string): Promise<KubernetesObject[]> {
     const manifests = await this.loadManifestsFromFile(filePath);
+    if (manifests.filter(s => s?.kind).length === 0) {
+      throw new Error('No valid Kubernetes resources found in file');
+    }
     return this.syncResources(context, manifests, 'apply', namespace);
+  }
+
+  /**
+   * Load manifests from a YAML string.
+   * @param yaml the YAML string
+   * @return an array of Kubernetes resources
+   */
+  async loadManifestsFromYAML(yaml: string): Promise<KubernetesObject[]> {
+    const manifests = parseAllDocuments(yaml, { customTags: this.getTags });
+    // filter out any null manifests
+    return manifests.map(manifest => manifest.toJSON()).filter(manifest => !!manifest);
+  }
+
+  /**
+   * Similar to applyResourcesFromFile, but instead you can pass in a string that contains the YAML
+   *
+   * @param context a context
+   * @param yaml content consisting of a stringified YAML
+   * @return an array of resources created
+   */
+  async applyResourcesFromYAML(context: string, yaml: string): Promise<KubernetesObject[]> {
+    const manifests = await this.loadManifestsFromYAML(yaml);
+    return this.applyResources(context, manifests, 'apply');
   }
 
   /**
@@ -1285,7 +1321,12 @@ export class KubernetesClient {
           //
           // See: https://github.com/kubernetes/kubernetes/issues/97423
           if (action === 'apply') {
-            const response = await client.patch(spec);
+            const response = await client.patch(
+              spec,
+              undefined /* pretty */,
+              undefined /* dryRun */,
+              FIELD_MANAGER /* fieldManager */,
+            );
             created.push(response.body);
           }
         } catch (error) {
@@ -1447,7 +1488,7 @@ export class KubernetesClient {
     throw new Error('error when setting the informer');
   }
 
-  async refreshInformer(id: number) {
+  async refreshInformer(id: number): Promise<void> {
     const currentContext = this.kubeConfig.getContextObject(this.kubeConfig.currentContext);
     const informerInfo = this.informerManager.getInformerInfo(id);
     // if context changed after we started the informer, we recreate it with the new context
@@ -1457,7 +1498,23 @@ export class KubernetesClient {
     }
   }
 
-  public getContextsState(): Map<string, ContextState> {
-    return this.contextsState.getContextsState();
+  public getContextsGeneralState(): Map<string, ContextGeneralState> {
+    return this.contextsState.getContextsGeneralState();
+  }
+
+  public getCurrentContextGeneralState(): ContextGeneralState {
+    return this.contextsState.getCurrentContextGeneralState();
+  }
+
+  public registerGetCurrentContextResources(resourceName: ResourceName): KubernetesObject[] {
+    return this.contextsState.registerGetCurrentContextResources(resourceName);
+  }
+
+  public unregisterGetCurrentContextResources(resourceName: ResourceName): KubernetesObject[] {
+    return this.contextsState.unregisterGetCurrentContextResources(resourceName);
+  }
+
+  public dispose(): void {
+    this.contextsState.dispose();
   }
 }

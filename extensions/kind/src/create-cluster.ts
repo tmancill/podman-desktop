@@ -15,24 +15,26 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
-import * as extensionApi from '@podman-desktop/api';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import * as os from 'node:os';
-import { getKindPath, getMemTotalInfo } from './util';
+import * as path from 'node:path';
+
+import type { AuditRecord, AuditRequestItems, AuditResult, CancellationToken } from '@podman-desktop/api';
+import * as extensionApi from '@podman-desktop/api';
 import mustache from 'mustache';
 import { parseAllDocuments } from 'yaml';
 
-import createClusterConfTemplate from './templates/create-cluster-conf.mustache?raw';
-import type { AuditRecord, AuditResult, CancellationToken, AuditRequestItems } from '@podman-desktop/api';
 import ingressManifests from '/@/resources/contour.yaml?raw';
+
+import createClusterConfTemplate from './templates/create-cluster-conf.mustache?raw';
+import { getKindPath, getMemTotalInfo } from './util';
 
 export function getKindClusterConfig(
   clusterName: string,
   httpHostPort: number,
   httpsHostPort: number,
   controlPlaneImage?: string,
-) {
+): string {
   return mustache.render(createClusterConfTemplate, {
     clusterName: clusterName,
     httpHostPort: httpHostPort,
@@ -47,7 +49,7 @@ function getTags(tags: any[]): any[] {
     if (tag.tag === 'tag:yaml.org,2002:int') {
       const newTag = { ...tag };
       newTag.test = /^(0[0-7][0-7][0-7])$/;
-      newTag.resolve = str => parseInt(str, 8);
+      newTag.resolve = (str: string): number => parseInt(str, 8);
       tags.unshift(newTag);
       break;
     }
@@ -55,7 +57,7 @@ function getTags(tags: any[]): any[] {
   return tags;
 }
 
-export async function setupIngressController(clusterName: string) {
+export async function setupIngressController(clusterName: string): Promise<void> {
   const manifests = parseAllDocuments(ingressManifests, { customTags: getTags });
   await extensionApi.kubernetes.createResources(
     'kind-' + clusterName,

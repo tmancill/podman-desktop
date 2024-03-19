@@ -14,7 +14,7 @@ const config = {
   title: 'Podman Desktop',
   url: inDevMode ? 'http://localhost:3000' : 'https://podman-desktop.io',
   baseUrl: '/',
-  onBrokenLinks: 'warn',
+  onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
   organizationName: 'containers',
@@ -63,27 +63,26 @@ const config = {
           },
           {
             to: '/docs/installation/windows-install',
-            from: '/docs/Installation/windows-install',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-chocolatey',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-chocolatey',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-scoop',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-scoop',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
-          },
-          {
-            to: '/docs/installation/windows-install/installing-podman-desktop-with-winget',
-            from: '/docs/Installation/windows-install/installing-podman-desktop-with-winget',
+            from: [
+              '/docs/Installation/windows-install',
+              '/docs/installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
+              '/docs/Installation/windows-install/installing-podman-desktop-silently-with-the-windows-installer',
+              '/docs/installation/windows-install/installing-podman-desktop-with-chocolatey',
+              '/docs/Installation/windows-install/installing-podman-desktop-with-chocolatey',
+              '/docs/installation/windows-install/installing-podman-desktop-with-scoop',
+              '/docs/Installation/windows-install/installing-podman-desktop-with-scoop',
+              '/docs/installation/windows-install/installing-podman-desktop-with-winget',
+              '/docs/Installation/windows-install/installing-podman-desktop-with-winget',
+              '/docs/Installation/windows-install/installing-podman-with-openshift-local',
+              '/docs/Installation/windows-install/installing-podman-with-podman-desktop',
+              '/docs/onboarding-for-containers/installing-podman-with-openshift-local-on-windows',
+              '/docs/onboarding-for-containers/installing-podman',
+              '/docs/onboarding/containers/installing-podman-with-openshift-local-on-windows',
+              '/docs/onboarding/containers/installing-podman-with-podman-desktop-on-windows',
+              '/docs/onboarding/containers/installing-podman',
+              '/docs/podman/installing-podman-with-openshift-local-on-windows',
+              '/docs/podman/installing',
+            ],
           },
           {
             to: '/docs/installation/macos-install',
@@ -98,8 +97,18 @@ const config = {
             from: '/docs/Installation/linux-install/installing-podman-desktop-from-a-flatpak-bundle',
           },
           {
-            to: '/docs/installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
-            from: '/docs/Installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
+            to: '/docs/proxy',
+            from: [
+              '/docs/installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
+              '/docs/Installation/windows-install/installing-podman-desktop-and-podman-in-a-restricted-environment',
+              '/docs/installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
+              '/docs/Installation/linux-install/installing-podman-desktop-from-a-compressed-tar-file',
+              '/docs/proxy/using-a-proxy-in-your-containers',
+              '/docs/proxy/using-a-proxy-on-linux',
+              '/docs/proxy/using-a-proxy-requiring-a-custom-ca',
+              '/docs/proxy/using-a-proxy',
+              '/docs/proxy/using-a-vpn-on-windows',
+            ],
           },
           {
             to: '/docs/compose',
@@ -112,23 +121,6 @@ const config = {
           {
             to: '/docs/containers/onboarding',
             from: ['/docs/onboarding-for-containers', '/docs/onboarding', '/docs/onboarding/containers'],
-          },
-          {
-            to: '/docs/podman/installing',
-            from: [
-              '/docs/onboarding-for-containers/installing-podman',
-              '/docs/onboarding/containers/installing-podman',
-              '/docs/Installation/windows-install/installing-podman-with-podman-desktop',
-              '/docs/onboarding/containers/installing-podman-with-podman-desktop-on-windows',
-            ],
-          },
-          {
-            to: '/docs/podman/installing-podman-with-openshift-local-on-windows',
-            from: [
-              '/docs/onboarding-for-containers/installing-podman-with-openshift-local-on-windows',
-              '/docs/Installation/windows-install/installing-podman-with-openshift-local',
-              '/docs/onboarding/containers/installing-podman-with-openshift-local-on-windows',
-            ],
           },
           {
             to: '/docs/lima/creating-a-lima-instance',

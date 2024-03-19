@@ -19,15 +19,36 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import '@testing-library/jest-dom/vitest';
-import { test, expect } from 'vitest';
+
 import { render, screen } from '@testing-library/svelte';
+import { expect, test } from 'vitest';
+
 import Tooltip from './Tooltip.svelte';
 
+const tip = 'test';
+
 test('Expect basic styling', async () => {
-  const tooltip = 'test';
-  render(Tooltip, { tip: tooltip });
+  render(Tooltip, { tip });
 
   const element = screen.getByLabelText('tooltip');
   expect(element).toBeInTheDocument();
   expect(element).toHaveClass('text-white');
 });
+
+function createTest(props: Record<string, boolean>, locationName: string, expectedStyle = locationName) {
+  test(`Expect property ${locationName} to add ${expectedStyle} class to parent element`, () => {
+    render(Tooltip, { tip, ...props });
+    const element = screen.getByLabelText('tooltip');
+    expect(element).toBeInTheDocument();
+    expect(element.parentElement).toHaveClass(expectedStyle);
+  });
+}
+
+createTest({ left: true }, 'left');
+createTest({ right: true }, 'right');
+createTest({ bottom: true }, 'bottom');
+createTest({ top: true }, 'top');
+createTest({ topLeft: true }, 'topLeft', 'top-left');
+createTest({ topRight: true }, 'topRight', 'top-right');
+createTest({ bottomLeft: true }, 'bottomLeft', 'bottom-left');
+createTest({ bottomRight: true }, 'bottomRight', 'bottom-right');

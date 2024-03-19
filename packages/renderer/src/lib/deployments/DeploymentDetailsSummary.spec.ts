@@ -17,11 +17,13 @@
  ***********************************************************************/
 
 import '@testing-library/jest-dom/vitest';
-import { test, vi, expect, beforeAll } from 'vitest';
+
+import type { V1Deployment } from '@kubernetes/client-node';
 import { render, screen } from '@testing-library/svelte';
+import { beforeAll, expect, test, vi } from 'vitest';
+
 import DeploymentDetailsSummary from './DeploymentDetailsSummary.svelte';
 import type { DeploymentUI } from './DeploymentUI';
-import type { V1Deployment } from '@kubernetes/client-node';
 
 const deploymentUI: DeploymentUI = {
   name: 'my-deployment',
@@ -59,7 +61,7 @@ test('Expect basic rendering', async () => {
   kubernetesGetCurrentNamespaceMock.mockResolvedValue('default');
   kubernetesReadNamespacedDeploymentMock.mockResolvedValue(deployment);
 
-  render(DeploymentDetailsSummary, { deploymentUI: deploymentUI, deployment: deployment });
+  render(DeploymentDetailsSummary, { deployment: deployment });
 
   expect(screen.getByText(deploymentUI.name)).toBeInTheDocument();
 });
@@ -68,7 +70,7 @@ test('Check more properties', async () => {
   kubernetesGetCurrentNamespaceMock.mockResolvedValue('default');
   kubernetesReadNamespacedDeploymentMock.mockResolvedValue(undefined);
 
-  render(DeploymentDetailsSummary, { deploymentUI: deploymentUI, deployment: deployment });
+  render(DeploymentDetailsSummary, { deployment: deployment });
 
   // Expect the name and namespace to show
   expect(screen.getByText(deploymentUI.name)).toBeInTheDocument();

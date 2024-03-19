@@ -16,32 +16,33 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { Cluster, Context, User, KubeConfig } from '@kubernetes/client-node';
+import type { Cluster, Context, KubeConfig, User } from '@kubernetes/client-node';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { ApiSenderType } from './api.js';
 import type { ConfigurationRegistry } from './configuration-registry.js';
 import { FilesystemMonitoring } from './filesystem-monitoring.js';
-import type { Telemetry } from './telemetry/telemetry.js';
-import type { ApiSenderType } from './api.js';
 import { KubernetesClient } from './kubernetes-client.js';
 import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
+import type { Telemetry } from './telemetry/telemetry.js';
 
 // WARNING: Do not import anything from kubernetes-client.spec.ts
 // or it will execute the modules mocks from there, incompatibles with tests in this file
 
 class TestKubernetesClient extends KubernetesClient {
-  public setClusters(clusters: Cluster[]) {
+  public setClusters(clusters: Cluster[]): void {
     this.kubeConfig.clusters = clusters;
   }
-  public setUsers(users: User[]) {
+  public setUsers(users: User[]): void {
     this.kubeConfig.users = users;
   }
-  public setContexts(contexts: Context[]) {
+  public setContexts(contexts: Context[]): void {
     this.kubeConfig.contexts = contexts;
   }
   public getUsers(): User[] {
     return this.kubeConfig.users;
   }
-  public setCurrentContext(name: string) {
+  public setCurrentContext(name: string): void {
     this.currentContextName = name;
   }
 }

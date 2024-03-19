@@ -1,11 +1,13 @@
 <script lang="ts">
-import Modal from '../dialogs/Modal.svelte';
+import { faRefresh, faTrash } from '@fortawesome/free-solid-svg-icons';
+import humanizeDuration from 'humanize-duration';
+import moment from 'moment';
+
+import CloseButton from '/@/lib/ui/CloseButton.svelte';
 import type { EventStoreInfo } from '/@/stores/event-store';
 
-import moment from 'moment';
-import humanizeDuration from 'humanize-duration';
+import Modal from '../dialogs/Modal.svelte';
 import Button from '../ui/Button.svelte';
-import { faRefresh, faTrash } from '@fortawesome/free-solid-svg-icons';
 
 export let closeCallback: () => void;
 
@@ -32,9 +34,7 @@ async function fetch(): Promise<void> {
           <div class="mx-2">Details of {eventStoreInfo.name} store</div>
         </div>
       </h1>
-      <button class="hover:text-gray-300 px-2 py-1" aria-label="Close" on:click="{() => closeCallback()}">
-        <i class="fas fa-times" aria-hidden="true"></i>
-      </button>
+      <CloseButton on:click="{() => closeCallback()}" />
     </div>
     <div class="overflow-y-auto px-4 pb-4">
       <div class="flex flex-col rounded-lg">

@@ -16,19 +16,20 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
-import type { ApiSenderType } from './api.js';
-
-import { IconRegistry } from './icon-registry.js';
-import type { AnalyzedExtension } from './extension-loader.js';
 import path from 'node:path';
+
+import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+
+import type { ApiSenderType } from './api.js';
+import type { AnalyzedExtension } from './extension-loader.js';
+import { IconRegistry } from './icon-registry.js';
 
 let iconRegistry: IconRegistry;
 const apiSenderSendMock = vi.fn();
 
 vi.mock('../util', async () => {
   return {
-    isWindows: () => false,
+    isWindows: (): boolean => false,
   };
 });
 

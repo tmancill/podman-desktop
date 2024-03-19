@@ -1,7 +1,8 @@
 <script lang="ts">
-import Fa from 'svelte-fa';
-import type { ExtensionInfo } from '../../../../main/src/plugin/api/extension-info';
 import { faPuzzlePiece } from '@fortawesome/free-solid-svg-icons';
+import Fa from 'svelte-fa';
+
+import type { ExtensionInfo } from '../../../../main/src/plugin/api/extension-info';
 
 export let extension: ExtensionInfo;
 
@@ -22,5 +23,5 @@ $: fade = extension.state !== 'started' ? ' brightness-50' : '';
 {#if icon}
   <img src="{icon}" alt="{extension.name}" class="max-w-10 max-h-10 {fade}" />
 {:else}
-  <Fa alt="{extension.name}" class="h-10 w-10 rounded-full text-violet-600 {fade}" size="25" icon="{faPuzzlePiece}" />
+  <Fa class="h-10 w-10 rounded-full text-violet-600 {fade}" size="1.6x" icon="{faPuzzlePiece}" />
 {/if}

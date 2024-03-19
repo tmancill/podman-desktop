@@ -16,8 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as extensionApi from '@podman-desktop/api';
 import * as fs from 'node:fs';
+
+import * as extensionApi from '@podman-desktop/api';
 import * as jsYaml from 'js-yaml';
 
 interface KubeContext {
@@ -118,7 +119,7 @@ function getKubeconfig(): string | undefined {
   return kubeconfigFile;
 }
 
-async function setContext(newContext: string) {
+async function setContext(newContext: string): Promise<void> {
   const file = getKubeconfig();
   if (!file) {
     await extensionApi.window.showErrorMessage('No kubeconfig file found');

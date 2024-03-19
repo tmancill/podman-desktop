@@ -16,10 +16,12 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { beforeEach, expect, test, vi } from 'vitest';
-import { AnimatedTray } from './tray-animate-icon.js';
-import * as path from 'path';
+import * as path from 'node:path';
+
 import { app } from 'electron';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import { AnimatedTray } from './tray-animate-icon.js';
 
 // to call protected methods
 class TestAnimatedTray extends AnimatedTray {
@@ -36,7 +38,7 @@ let testAnimatedTray: TestAnimatedTray;
 vi.mock('electron', async () => {
   return {
     app: {
-      getAppPath: () => 'a-custom-appPath',
+      getAppPath: (): string => 'a-custom-appPath',
     },
     nativeTheme: {
       on: vi.fn(),

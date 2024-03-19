@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023 Red Hat, Inc.
+ * Copyright (C) 2023-2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
  ***********************************************************************/
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { test, expect, vi, beforeEach } from 'vitest';
-import * as extensionApi from '@podman-desktop/api';
-import * as KubectlExtension from './extension';
-import { afterEach } from 'node:test';
-import type { Configuration } from '@podman-desktop/api';
 import * as path from 'node:path';
+import { afterEach } from 'node:test';
+
+import type { Configuration } from '@podman-desktop/api';
+import * as extensionApi from '@podman-desktop/api';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+import * as KubectlExtension from './extension';
 
 const extensionContext = {
   subscriptions: [],
@@ -150,7 +152,7 @@ test('kubectl CLI tool not registered when version json stdout cannot be parsed'
     expect(console.warn).toBeCalled();
     expect(console.warn).toBeCalledWith(
       expect.stringContaining(
-        'Error getting kubectl from user PATH: SyntaxError: Unexpected token { in JSON at position 1',
+        `Error getting kubectl from user PATH: SyntaxError: Expected property name or '}' in JSON at position 1`,
       ),
     );
   });

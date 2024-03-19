@@ -26,7 +26,7 @@
       "./website/tsconfig.json",
       "./website-argos/tsconfig.json",
       "./extensions/*/tsconfig.json",
-      "./tests/tsconfig.json",
+      "./tests/playwright/tsconfig.json",
       "./tools/tsconfig.json"
     ]
   },
@@ -36,6 +36,20 @@
       "parser": "svelte-eslint-parser",
       "parserOptions": {
         "parser": "@typescript-eslint/parser"
+      }
+    },
+    {
+      // enable the rule specifically for TypeScript files
+      "files": ["*.ts", "*.tsx", "*.svelte"],
+      "rules": {
+        "@typescript-eslint/explicit-function-return-type": "error"
+      }
+    },
+    {
+      "files": ["*.svelte", "*.tsx"],
+      "rules": {
+        "header/header": "off",
+        "unicorn/prefer-node-protocol": "off"
       }
     }
   ],
@@ -53,7 +67,16 @@
       }
     }
   },
-  "plugins": ["@typescript-eslint", "sonarjs", "etc", "redundant-undefined", "no-null"],
+  "plugins": [
+    "@typescript-eslint",
+    "sonarjs",
+    "etc",
+    "redundant-undefined",
+    "no-null",
+    "header",
+    "simple-import-sort",
+    "unicorn"
+  ],
   "ignorePatterns": [
     "packages/preload/exposedInMainWorld.d.ts",
     "packages/preload-docker-extension/exposedInDockerExtension.d.ts",
@@ -63,6 +86,7 @@
   ],
   "rules": {
     "eqeqeq": "error",
+    "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/no-var-requires": "off",
     "@typescript-eslint/consistent-type-imports": "error",
@@ -93,6 +117,8 @@
     "import/default": "off",
     "import/no-named-as-default-member": "off",
     "import/no-named-as-default": "off",
+    "import/first": "error",
+    "import/newline-after-import": "error",
     "sonarjs/cognitive-complexity": "off",
     "sonarjs/no-duplicate-string": "off",
     "sonarjs/no-empty-collection": "off",
@@ -100,6 +126,10 @@
     "etc/no-commented-out-code": "error",
     "etc/no-deprecated": "off",
     "redundant-undefined/redundant-undefined": "error",
-    "import/no-extraneous-dependencies": "error"
+    "import/no-extraneous-dependencies": "error",
+    "header/header": [2, "block", [{ "pattern": "SPDX-License-Identifier: Apache-2\\.0" }]],
+    "simple-import-sort/imports": "error",
+    "simple-import-sort/exports": "error",
+    "unicorn/prefer-node-protocol": "error"
   }
 }

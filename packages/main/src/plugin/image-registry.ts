@@ -16,28 +16,28 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { Disposable } from './types/disposable.js';
-import type * as containerDesktopAPI from '@podman-desktop/api';
-import { Emitter } from './events/emitter.js';
-import type * as Dockerode from 'dockerode';
-import type { Telemetry } from './telemetry/telemetry.js';
 import * as crypto from 'node:crypto';
-import type { HttpsOptions, OptionsOfTextResponseBody } from 'got';
-import got, { HTTPError, RequestError } from 'got';
-import validator from 'validator';
-
-import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
-import type { Certificates } from './certificates.js';
-import type { Proxy } from './proxy.js';
-import type { ApiSenderType } from './api.js';
+import * as fs from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
-import * as nodeTar from 'tar';
-
 import { pipeline } from 'node:stream/promises';
-import { createWriteStream } from 'node:fs';
+
+import type * as containerDesktopAPI from '@podman-desktop/api';
+import type * as Dockerode from 'dockerode';
+import type { HttpsOptions, OptionsOfTextResponseBody } from 'got';
+import got, { HTTPError, RequestError } from 'got';
+import { HttpProxyAgent, HttpsProxyAgent } from 'hpagent';
+import * as nodeTar from 'tar';
+import validator from 'validator';
+
 import { isMac, isWindows } from '../util.js';
+import type { ApiSenderType } from './api.js';
+import type { Certificates } from './certificates.js';
+import { Emitter } from './events/emitter.js';
+import type { Proxy } from './proxy.js';
+import type { Telemetry } from './telemetry/telemetry.js';
+import { Disposable } from './types/disposable.js';
 
 export interface RegistryAuthInfo {
   authUrl: string;
@@ -622,6 +622,7 @@ export class ImageRegistry {
     if (
       parsedManifest.schemaVersion === 2 &&
       (parsedManifest.mediaType === 'application/vnd.oci.image.index.v1+json' ||
+        parsedManifest.mediaType === 'application/vnd.docker.distribution.manifest.list.v2+json' ||
         Array.isArray(parsedManifest.manifests))
     ) {
       // need to grab correct manifest from the index corresponding to our platform
@@ -642,8 +643,12 @@ export class ImageRegistry {
       }
       // find the manifest corresponding to our platform
       const matchedManifest = this.getBestManifest(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        parsedManifest.manifests.filter((m: any) => m.mediaType === 'application/vnd.oci.image.manifest.v1+json'),
+        parsedManifest.manifests.filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (m: any) =>
+            m.mediaType === 'application/vnd.oci.image.manifest.v1+json' ||
+            m.mediaType === 'application/vnd.docker.distribution.manifest.v2+json',
+        ),
         platformArch,
         platformOs,
       );
@@ -730,12 +735,12 @@ export class ImageRegistry {
         if (wwwAuthenticate) {
           const authInfo = this.extractAuthData(wwwAuthenticate);
           if (authInfo) {
-            const url = new URL(authInfo.authUrl);
             scheme = authInfo.scheme?.toLowerCase();
             // in case of basic auth, we use directly the registry URL
             if (scheme === 'basic') {
               return { authUrl: registryUrl, scheme };
             }
+            const url = new URL(authInfo.authUrl);
             if (authInfo.service) {
               url.searchParams.set('service', authInfo.service);
             }

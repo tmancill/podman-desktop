@@ -1,11 +1,12 @@
 <script lang="ts">
-import { onMount } from 'svelte';
-import type { CustomPickOptions } from './quickpick-input';
-import type { CustomPickItem } from '@podman-desktop/api';
-import Markdown from '../markdown/Markdown.svelte';
-import Fa from 'svelte-fa';
 import { faAngleDown, faAngleUp, faCircleCheck, faXmark } from '@fortawesome/free-solid-svg-icons';
+import type { CustomPickItem } from '@podman-desktop/api';
+import { onMount } from 'svelte';
+import Fa from 'svelte-fa';
+
+import Markdown from '../markdown/Markdown.svelte';
 import Button from '../ui/Button.svelte';
+import type { CustomPickOptions } from './quickpick-input';
 
 let id = -1;
 let title = '';
@@ -238,7 +239,7 @@ function dragMe(node: any) {
                           <div class="relative">
                             <div class="absolute right-0 mr-2 text-xl">
                               <button on:click="{() => setSectionVisibility((i / colsPerRow) * colsPerRow + j, true)}">
-                                <Fa size="14" icon="{faXmark}" />
+                                <Fa size="0.9x" icon="{faXmark}" />
                               </button>
                             </div>
                           </div>

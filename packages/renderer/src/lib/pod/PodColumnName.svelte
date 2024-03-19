@@ -1,11 +1,17 @@
 <script lang="ts">
-import { router } from 'tinro';
+import { handleNavigation } from '/@/navigation';
+
+import { NavigationPage } from '../../../../main/src/plugin/navigation/navigation-page';
 import type { PodInfoUI } from './PodInfoUI';
 
 export let object: PodInfoUI;
 
 function openDetailsPod(pod: PodInfoUI) {
-  router.goto(`/pods/${encodeURI(pod.kind)}/${encodeURI(pod.name)}/${encodeURIComponent(pod.engineId)}/logs`);
+  handleNavigation(NavigationPage.POD, {
+    kind: encodeURI(pod.kind),
+    name: encodeURI(pod.name),
+    engineId: encodeURIComponent(pod.engineId),
+  });
 }
 </script>
 

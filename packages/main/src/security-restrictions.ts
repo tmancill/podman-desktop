@@ -16,8 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
+import { URL } from 'node:url';
+
 import { app, shell } from 'electron';
-import { URL } from 'url';
+
 import { securityRestrictionCurrentHandler } from './security-restrictions-handler.js';
 
 /**

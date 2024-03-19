@@ -19,8 +19,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { AppearanceUtil } from './appearance-util';
+
 import { AppearanceSettings } from '../../../../main/src/plugin/appearance-settings';
+import { AppearanceUtil } from './appearance-util';
 
 const appearanceUtil: AppearanceUtil = new AppearanceUtil();
 
@@ -128,7 +129,10 @@ describe('getTheme', () => {
     getConfigurationValueMock.mockResolvedValue(AppearanceSettings.SystemEnumValue);
 
     const theme = await appearanceUtil.getTheme();
-    expect(theme).toBe('light');
+
+    // FIXME: for now we hardcode to the dark theme even if the Operating System is using light theme
+    // expect(theme).toBe('light');
+    expect(theme).toBe('dark');
   });
 
   test('should return dark if value is dark even if os is light', async () => {

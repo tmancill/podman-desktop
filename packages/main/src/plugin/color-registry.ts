@@ -16,16 +16,17 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { ApiSenderType } from './api.js';
-import type { Color, ColorDefinition, ColorInfo } from './api/color-info.js';
+import type * as extensionApi from '@podman-desktop/api';
+
+import type { RawThemeContribution } from '/@/plugin/api/theme-info.js';
+import { AppearanceSettings } from '/@/plugin/appearance-settings.js';
+import type { ConfigurationRegistry } from '/@/plugin/configuration-registry.js';
+import type { AnalyzedExtension } from '/@/plugin/extension-loader.js';
+import { Disposable } from '/@/plugin/types/disposable.js';
 
 import colorPalette from '../../../../tailwind-color-palette.json';
-import type { ConfigurationRegistry } from '/@/plugin/configuration-registry.js';
-import { AppearanceSettings } from '/@/plugin/appearance-settings.js';
-import type { RawThemeContribution } from '/@/plugin/api/theme-info.js';
-import { Disposable } from '/@/plugin/types/disposable.js';
-import type * as extensionApi from '@podman-desktop/api';
-import type { AnalyzedExtension } from '/@/plugin/extension-loader.js';
+import type { ApiSenderType } from './api.js';
+import type { Color, ColorDefinition, ColorInfo } from './api/color-info.js';
 
 export class ColorRegistry {
   #apiSender: ApiSenderType;
@@ -112,7 +113,7 @@ export class ColorRegistry {
 
     // create Disposable that will remove all theme names from the list of themes
     return {
-      dispose: () => {
+      dispose: (): void => {
         for (const themeId of themeIds) {
           this.#themes.delete(themeId);
         }
@@ -202,6 +203,8 @@ export class ColorRegistry {
     this.initSecondaryNav();
     this.initTitlebar();
     this.initInvertContent();
+    this.initCardContent();
+    this.initInputBox();
   }
 
   protected initGlobalNav(): void {
@@ -318,6 +321,23 @@ export class ColorRegistry {
     });
   }
 
+  protected initCardContent(): void {
+    this.registerColor(`card-bg`, {
+      dark: colorPalette.charcoal[800],
+      light: colorPalette.gray[300],
+    });
+
+    this.registerColor(`card-header-text`, {
+      dark: colorPalette.white,
+      light: colorPalette.charcoal[900],
+    });
+
+    this.registerColor(`card-text`, {
+      dark: colorPalette.gray[300],
+      light: colorPalette.charcoal[700],
+    });
+  }
+
   protected initInvertContent(): void {
     const invCt = 'invert-content-';
     this.registerColor(`${invCt}bg`, {
@@ -363,6 +383,80 @@ export class ColorRegistry {
     this.registerColor(`${invCt}info-icon`, {
       dark: colorPalette.purple[500],
       light: colorPalette.purple[600],
+    });
+  }
+
+  // input boxes
+  protected initInputBox(): void {
+    const sNav = 'input-field-';
+
+    this.registerColor(`${sNav}bg`, {
+      dark: colorPalette.transparent,
+      light: colorPalette.transparent,
+    });
+    this.registerColor(`${sNav}focused-bg`, {
+      dark: colorPalette.charcoal[900],
+      light: colorPalette.gray[100],
+    });
+    this.registerColor(`${sNav}disabled-bg`, {
+      dark: colorPalette.charcoal[900],
+      light: colorPalette.charcoal[900],
+    });
+    this.registerColor(`${sNav}hover-bg`, {
+      dark: colorPalette.transparent,
+      light: colorPalette.transparent,
+    });
+    this.registerColor(`${sNav}focused-text`, {
+      dark: colorPalette.white,
+      light: colorPalette.gray[900],
+    });
+    this.registerColor(`${sNav}error-text`, {
+      dark: colorPalette.red[500],
+      light: colorPalette.red[500],
+    });
+    this.registerColor(`${sNav}disabled-text`, {
+      dark: colorPalette.gray[900],
+      light: colorPalette.gray[900],
+    });
+    this.registerColor(`${sNav}hover-text`, {
+      dark: colorPalette.gray[900],
+      light: colorPalette.gray[900],
+    });
+    this.registerColor(`${sNav}placeholder-text`, {
+      dark: colorPalette.gray[900],
+      light: colorPalette.gray[900],
+    });
+    this.registerColor(`${sNav}stroke`, {
+      dark: colorPalette.charcoal[400],
+      light: colorPalette.charcoal[400],
+    });
+    this.registerColor(`${sNav}hover-stroke`, {
+      dark: colorPalette.purple[400],
+      light: colorPalette.purple[400],
+    });
+    this.registerColor(`${sNav}stroke-error`, {
+      dark: colorPalette.red[500],
+      light: colorPalette.red[500],
+    });
+    this.registerColor(`${sNav}stroke-readonly`, {
+      dark: colorPalette.charcoal[100],
+      light: colorPalette.charcoal[100],
+    });
+    this.registerColor(`${sNav}icon`, {
+      dark: colorPalette.gray[500],
+      light: colorPalette.gray[500],
+    });
+    this.registerColor(`${sNav}focused-icon`, {
+      dark: colorPalette.gray[500],
+      light: colorPalette.gray[500],
+    });
+    this.registerColor(`${sNav}disabled-icon`, {
+      dark: colorPalette.gray[500],
+      light: colorPalette.gray[500],
+    });
+    this.registerColor(`${sNav}hover-icon`, {
+      dark: colorPalette.gray[500],
+      light: colorPalette.gray[500],
     });
   }
 }

@@ -17,6 +17,7 @@
  ***********************************************************************/
 
 import type { Context, Informer, KubernetesObject } from '@kubernetes/client-node';
+
 import type { KubernetesInformerInfo, KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
 
 export class KubernetesInformerManager {
@@ -40,7 +41,7 @@ export class KubernetesInformerManager {
     return this.informerId;
   }
 
-  public updateInformer(id: number, informer: Informer<KubernetesObject>, context: Context) {
+  public updateInformer(id: number, informer: Informer<KubernetesObject>, context: Context): void {
     const informerSaved = this.getInformerInfo(id);
     if (informerSaved) {
       this.informers.set(id, {

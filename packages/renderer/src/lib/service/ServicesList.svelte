@@ -1,33 +1,37 @@
 <script lang="ts">
+import { faTrash } from '@fortawesome/free-solid-svg-icons';
+import moment from 'moment';
 import { onMount } from 'svelte';
-import { filtered, searchPattern } from '../../stores/services';
-import NavPage from '../ui/NavPage.svelte';
-import Table from '../table/Table.svelte';
+
+import KubernetesCurrentContextConnectionBadge from '/@/lib/ui/KubernetesCurrentContextConnectionBadge.svelte';
+import { kubernetesCurrentContextServicesFiltered, serviceSearchPattern } from '/@/stores/kubernetes-contexts-state';
+
+import ServiceIcon from '../images/ServiceIcon.svelte';
+import KubeApplyYamlButton from '../kube/KubeApplyYAMLButton.svelte';
+import DurationColumn from '../table/DurationColumn.svelte';
+import SimpleColumn from '../table/SimpleColumn.svelte';
 import { Column, Row } from '../table/table';
-import ServiceColumnStatus from './ServiceColumnStatus.svelte';
-import ServiceColumnName from './ServiceColumnName.svelte';
+import Table from '../table/Table.svelte';
+import Button from '../ui/Button.svelte';
+import FilteredEmptyScreen from '../ui/FilteredEmptyScreen.svelte';
+import NavPage from '../ui/NavPage.svelte';
 import { ServiceUtils } from './service-utils';
 import ServiceColumnActions from './ServiceColumnActions.svelte';
-import moment from 'moment';
-import Button from '../ui/Button.svelte';
-import { faTrash } from '@fortawesome/free-solid-svg-icons';
-import type { ServiceUI } from './ServiceUI';
-import ServiceIcon from '../images/ServiceIcon.svelte';
-import ServiceEmptyScreen from './ServiceEmptyScreen.svelte';
-import FilteredEmptyScreen from '../ui/FilteredEmptyScreen.svelte';
-import SimpleColumn from '../table/SimpleColumn.svelte';
-import DurationColumn from '../table/DurationColumn.svelte';
+import ServiceColumnName from './ServiceColumnName.svelte';
+import ServiceColumnStatus from './ServiceColumnStatus.svelte';
 import ServiceColumnType from './ServiceColumnType.svelte';
+import ServiceEmptyScreen from './ServiceEmptyScreen.svelte';
+import type { ServiceUI } from './ServiceUI';
 
 export let searchTerm = '';
-$: searchPattern.set(searchTerm);
+$: serviceSearchPattern.set(searchTerm);
 
 let services: ServiceUI[] = [];
 
 const serviceUtils = new ServiceUtils();
 
 onMount(() => {
-  return filtered.subscribe(value => {
+  return kubernetesCurrentContextServicesFiltered.subscribe(value => {
     services = value.map(service => serviceUtils.getServiceUI(service));
   });
 });
@@ -117,6 +121,10 @@ const row = new Row<ServiceUI>({ selectable: _service => true });
 </script>
 
 <NavPage bind:searchTerm="{searchTerm}" title="services">
+  <svelte:fragment slot="additional-actions">
+    <KubeApplyYamlButton />
+  </svelte:fragment>
+
   <svelte:fragment slot="bottom-additional-actions">
     {#if selectedItemsNumber > 0}
       <Button
@@ -126,6 +134,9 @@ const row = new Row<ServiceUI>({ selectable: _service => true });
         icon="{faTrash}" />
       <span>On {selectedItemsNumber} selected items.</span>
     {/if}
+    <div class="flex grow justify-end">
+      <KubernetesCurrentContextConnectionBadge />
+    </div>
   </svelte:fragment>
 
   <div class="flex min-w-full h-full" slot="content">
@@ -139,7 +150,7 @@ const row = new Row<ServiceUI>({ selectable: _service => true });
       on:update="{() => (services = services)}">
     </Table>
 
-    {#if $filtered.length === 0}
+    {#if $kubernetesCurrentContextServicesFiltered.length === 0}
       {#if searchTerm}
         <FilteredEmptyScreen icon="{ServiceIcon}" kind="services" bind:searchTerm="{searchTerm}" />
       {:else}
