@@ -19,22 +19,23 @@
 import * as fs from 'node:fs';
 import { IncomingMessage } from 'node:http';
 import { Socket } from 'node:net';
+import type { Readable, Writable } from 'node:stream';
 
 import {
-  type Context,
-  type Informer,
+  Exec,
   KubeConfig,
   type KubernetesObject,
-  type ObjectCache,
   type V1Deployment,
   type V1Ingress,
   type V1Service,
+  type V1Status,
   type Watch,
 } from '@kubernetes/client-node';
 import * as clientNode from '@kubernetes/client-node';
 import type { FileSystemWatcher } from '@podman-desktop/api';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { ResizableTerminalWriter } from '/@/plugin/kubernetes-exec-transmitter.js';
 import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
 
 import type { ApiSenderType } from './api.js';
@@ -42,10 +43,8 @@ import type { V1Route } from './api/openshift-types.js';
 import type { ConfigurationRegistry } from './configuration-registry.js';
 import { FilesystemMonitoring } from './filesystem-monitoring.js';
 import { KubernetesClient } from './kubernetes-client.js';
-import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
 
 const configurationRegistry: ConfigurationRegistry = {} as unknown as ConfigurationRegistry;
-const informerManager: KubernetesInformerManager = new KubernetesInformerManager();
 const fileSystemMonitoring: FilesystemMonitoring = new FilesystemMonitoring();
 const telemetry: Telemetry = {
   track: vi.fn().mockImplementation(async () => {
@@ -93,13 +92,7 @@ class TestKubernetesClient extends KubernetesClient {
 }
 
 function createTestClient(namespace?: string): TestKubernetesClient {
-  const client = new TestKubernetesClient(
-    apiSender,
-    configurationRegistry,
-    fileSystemMonitoring,
-    informerManager,
-    telemetry,
-  );
+  const client = new TestKubernetesClient(apiSender, configurationRegistry, fileSystemMonitoring, telemetry);
   if (namespace) {
     client.setCurrentNamespace(namespace);
   }
@@ -112,37 +105,7 @@ const apiSender: ApiSenderType = {
   receive: vi.fn(),
 };
 
-const context: Context = {
-  cluster: 'cluster',
-  name: 'name',
-  user: 'user',
-};
-
-function mockContext(): void {
-  const newContext: Context = {
-    cluster: 'cluster1',
-    name: 'name1',
-    user: 'user',
-  };
-  getContextObjectMock.mockReturnValue(newContext);
-}
-
-const stopInformerMock = vi.fn();
-const informer: Informer<KubernetesObject> & ObjectCache<KubernetesObject> = {
-  start: vi.fn(),
-  stop: stopInformerMock,
-  on: (
-    _verb: 'change' | 'add' | 'update' | 'delete' | 'error' | 'connect',
-    _cb: clientNode.ObjectCallback<KubernetesObject>,
-  ) => {},
-  off: (
-    _verb: 'change' | 'add' | 'update' | 'delete' | 'error' | 'connect',
-    _cb: clientNode.ObjectCallback<KubernetesObject>,
-  ) => {},
-  get: vi.fn(),
-  list: vi.fn(),
-};
-
+const execMock = vi.fn();
 beforeAll(() => {
   vi.mock('@kubernetes/client-node', async () => {
     return {
@@ -161,6 +124,7 @@ beforeAll(() => {
           this.statusCode = statusCode;
         }
       },
+      Exec: vi.fn(),
       V1DeleteOptions: vi.fn(),
     };
   });
@@ -172,6 +136,7 @@ beforeEach(() => {
   KubeConfig.prototype.makeApiClient = makeApiClientMock;
   KubeConfig.prototype.getContextObject = getContextObjectMock;
   KubeConfig.prototype.currentContext = 'context';
+  Exec.prototype.exec = execMock;
 });
 
 test('Create Kubernetes resources with empty should return ok', async () => {
@@ -372,13 +337,7 @@ test('Check connection to Kubernetes cluster', async () => {
     getCode: () => Promise.resolve({ body: { gitVersion: 'v1.20.0' } }),
   });
 
-  const client = new KubernetesClient(
-    {} as ApiSenderType,
-    configurationRegistry,
-    fileSystemMonitoring,
-    informerManager,
-    telemetry,
-  );
+  const client = new KubernetesClient({} as ApiSenderType, configurationRegistry, fileSystemMonitoring, telemetry);
   const result = await client.checkConnection();
   expect(result).toBeTruthy();
 });
@@ -389,13 +348,7 @@ test('Check connection to Kubernetes cluster in error', async () => {
     getCode: () => Promise.reject(new Error('K8sError')),
   });
 
-  const client = new KubernetesClient(
-    {} as ApiSenderType,
-    configurationRegistry,
-    fileSystemMonitoring,
-    informerManager,
-    telemetry,
-  );
+  const client = new KubernetesClient({} as ApiSenderType, configurationRegistry, fileSystemMonitoring, telemetry);
   const result = await client.checkConnection();
   expect(result).toBeFalsy();
 });
@@ -407,13 +360,7 @@ test('Check update with empty kubeconfig file', async () => {
   // provide empty kubeconfig file
   readFileMock.mockResolvedValue('');
 
-  const client = new KubernetesClient(
-    {} as ApiSenderType,
-    configurationRegistry,
-    fileSystemMonitoring,
-    informerManager,
-    telemetry,
-  );
+  const client = new KubernetesClient({} as ApiSenderType, configurationRegistry, fileSystemMonitoring, telemetry);
   await client.refresh();
   expect(consoleErrorSpy).toBeCalledWith(expect.stringContaining('is empty. Skipping'));
 });
@@ -996,258 +943,6 @@ test('Expect deleteService to be called if there is an active connection', async
   expect(deleteServiceMock).toBeCalled();
 });
 
-// deployment informer
-test('Expect deployment startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient();
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('no active namespace');
-});
-
-test('Expect deployment startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedDeployment: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(undefined);
-  await expect(client.startInformer('DEPLOYMENT')).rejects.toThrowError('error when setting the informer');
-});
-
-test('Expect deployment startInformer creates new informer and add it to registry', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedDeployment: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  const id = await client.startInformer('DEPLOYMENT');
-  const informerItem = informerManager.getInformerInfo(id);
-  expect(informerItem).not.toBeUndefined();
-});
-
-test('Expect deployment startInformer updates an existing informer if an id is passed', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedDeployment: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'DEPLOYMENT');
-  // start it again and check informer is refreshed
-  await client.startInformer('DEPLOYMENT', id);
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-test('Expect deployment refreshInformer should stop and start the informer again', async () => {
-  const client = createTestClient('default');
-  mockContext();
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedDeployment: vi.fn(),
-  });
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'DEPLOYMENT');
-  // refresh it again and check informer is stopped and restarted
-  await client.refreshInformer(id);
-  expect(stopInformerMock).toBeCalled();
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-// ingress informer
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient();
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('no active namespace');
-});
-
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(undefined);
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('error when setting the informer');
-});
-
-test('Expect ingress startInformer creates new informer and add it to registry', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  const id = await client.startInformer('INGRESS');
-  const informerItem = informerManager.getInformerInfo(id);
-  expect(informerItem).not.toBeUndefined();
-});
-
-test('Expect ingress startInformer updates an existing informer if an id is passed', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // start it again and check informer is refreshed
-  await client.startInformer('INGRESS', id);
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-test('Expect ingress refreshInformer should stop and start the informer again', async () => {
-  const client = createTestClient('default');
-  mockContext();
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // refresh it again and check informer is stopped and restarted
-  await client.refreshInformer(id);
-  expect(stopInformerMock).toBeCalled();
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-// route informer
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient();
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('no active namespace');
-});
-
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(undefined);
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('error when setting the informer');
-});
-
-test('Expect ingress startInformer creates new informer and add it to registry', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  const id = await client.startInformer('INGRESS');
-  const informerItem = informerManager.getInformerInfo(id);
-  expect(informerItem).not.toBeUndefined();
-});
-
-test('Expect ingress startInformer updates an existing informer if an id is passed', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // start it again and check informer is refreshed
-  await client.startInformer('INGRESS', id);
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-test('Expect ingress refreshInformer should stop and start the informer again', async () => {
-  const client = createTestClient('default');
-  mockContext();
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // refresh it again and check informer is stopped and restarted
-  await client.refreshInformer(id);
-  expect(stopInformerMock).toBeCalled();
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-// service informer
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient();
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('no active namespace');
-});
-
-test('Expect ingress startInformer throws an error if there is no active namespace', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(undefined);
-  await expect(client.startInformer('INGRESS')).rejects.toThrowError('error when setting the informer');
-});
-
-test('Expect ingress startInformer creates new informer and add it to registry', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  const id = await client.startInformer('INGRESS');
-  const informerItem = informerManager.getInformerInfo(id);
-  expect(informerItem).not.toBeUndefined();
-});
-
-test('Expect ingress startInformer updates an existing informer if an id is passed', async () => {
-  const client = createTestClient('default');
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  getContextObjectMock.mockReturnValue(context);
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // start it again and check informer is refreshed
-  await client.startInformer('INGRESS', id);
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
-test('Expect ingress refreshInformer should stop and start the informer again', async () => {
-  const client = createTestClient('default');
-  mockContext();
-  makeApiClientMock.mockReturnValue({
-    getCode: () => Promise.reject(new Error('K8sError')),
-    listNamespacedIngress: vi.fn(),
-  });
-  vi.spyOn(clientNode, 'makeInformer').mockReturnValue(informer);
-
-  // add informer to registry
-  const id = informerManager.addInformer(informer, context, 'INGRESS');
-  // refresh it again and check informer is stopped and restarted
-  await client.refreshInformer(id);
-  expect(stopInformerMock).toBeCalled();
-  expect(apiSenderSendMock).toBeCalledWith('kubernetes-informer-refresh', id);
-});
-
 test('Expect apply with invalid file should error', async () => {
   const client = createTestClient('default');
   let expectedError: unknown;
@@ -1502,6 +1197,110 @@ test('setupWatcher sends kubernetes-context-update when kubeconfig file is delet
   client.setupWatcher('/path/to/kube/config');
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(apiSenderSendMock).toHaveBeenCalledWith('kubernetes-context-update');
+});
+
+test('Test should exec into container ', async () => {
+  const client = createTestClient('default');
+  makeApiClientMock.mockReturnValue({
+    getCode: () => Promise.resolve({ body: { gitVersion: 'v1.20.0' } }),
+  });
+
+  let stdout = '';
+  const onStdOutFn = (data: Buffer): void => {
+    stdout += data.toString();
+  };
+
+  let stderr = '';
+  const onStdErrFn = (data: Buffer): void => {
+    stderr += data.toString();
+  };
+
+  const onCloseFn = vi.fn();
+
+  execMock.mockImplementation(
+    (
+      namespace: string,
+      podName: string,
+      containerName: string,
+      command: string | string[],
+      stdout: Writable | null,
+      stderr: Writable | null,
+      stdin: Readable | null,
+      tty: boolean,
+      _?: (status: V1Status) => void,
+    ) => {
+      expect(namespace).toBe('default');
+      expect(podName).toBe('test-pod');
+      expect(containerName).toBe('test-container');
+      expect(tty).toBeTruthy();
+      expect(command).toEqual(['/bin/sh', '-c', 'if command -v bash >/dev/null 2>&1; then bash; else sh; fi']);
+
+      if (stdout) {
+        stdout.write('stdOut output');
+
+        stdout.on('resize', () => {
+          expect(stdout).instanceOf(ResizableTerminalWriter);
+          const { width, height } = (stdout as ResizableTerminalWriter).getDimension();
+          expect(width).toBe(1);
+          expect(height).toBe(1);
+        });
+      }
+      if (stderr) {
+        stderr.write('stdErr output');
+      }
+
+      if (stdin) {
+        stdin.on('data', chunk => expect(chunk.toString()).toEqual('stdIn input'));
+      }
+
+      return { on: vi.fn() };
+    },
+  );
+
+  const execResp = await client.execIntoContainer('test-pod', 'test-container', onStdOutFn, onStdErrFn, onCloseFn);
+
+  expect(stdout).toBe('stdOut output');
+  expect(stderr).toBe('stdErr output');
+
+  execResp.onStdIn('stdIn input');
+  execResp.onResize(1, 1);
+});
+
+test('Test should throw an exception during exec command if resize parameters are wrong', async () => {
+  const client = createTestClient('default');
+  makeApiClientMock.mockReturnValue({
+    getCode: () => Promise.resolve({ body: { gitVersion: 'v1.20.0' } }),
+  });
+
+  const execResp = await client.execIntoContainer(
+    'test-pod',
+    'test-container',
+    () => {},
+    () => {},
+    () => {},
+  );
+
+  expect(() => execResp.onResize(-1, -1)).toThrow('resizing must be done using positive cols and rows');
+  expect(() => execResp.onResize(0, 0)).toThrow('resizing must be done using positive cols and rows');
+  expect(() => execResp.onResize(Number.NaN, Number.NaN)).toThrow('resizing must be done using positive cols and rows');
+  expect(() => execResp.onResize(Infinity, Infinity)).toThrow('resizing must be done using positive cols and rows');
+});
+
+test('Test should throw an exception during exec command if internal kube method fails', async () => {
+  const client = createTestClient('default');
+  makeApiClientMock.mockReturnValue({
+    getCode: () => Promise.reject(new Error('K8sError')),
+  });
+
+  await expect(
+    client.execIntoContainer(
+      'test-pod',
+      'test-container',
+      () => {},
+      () => {},
+      () => {},
+    ),
+  ).rejects.toThrowError('not active connection');
 });
 
 test('Expect pod to be restarted', async () => {

@@ -58,7 +58,6 @@ import type { IconInfo } from '../../main/src/plugin/api/icon-info';
 import type { ImageCheckerInfo } from '../../main/src/plugin/api/image-checker-info';
 import type { ImageInfo } from '../../main/src/plugin/api/image-info';
 import type { ImageInspectInfo } from '../../main/src/plugin/api/image-inspect-info';
-import type { KubernetesInformerResourcesType } from '../../main/src/plugin/api/kubernetes-informer-info';
 import type { KubernetesGeneratorInfo } from '../../main/src/plugin/api/KubernetesGeneratorInfo';
 import type { NetworkInspectInfo } from '../../main/src/plugin/api/network-info';
 import type { NotificationCard, NotificationCardOptions } from '../../main/src/plugin/api/notification';
@@ -1316,16 +1315,19 @@ export function initExposure(): void {
 
   const openSaveDialogResponses = new Map<string, OpenSaveDialogResultCallback>();
 
-  const deferedHandleDialog = (): { id: string; deferred: Deferred<string | string[] | undefined> } => {
+  const deferedHandleDialog = (): {
+    id: string;
+    deferred: Deferred<containerDesktopAPI.Uri | string | string[] | undefined>;
+  } => {
     // generate id
     const dialogId = idOpenSaveDialog;
     idOpenSaveDialog++;
 
     // create defer object
-    const deferred = new Deferred<string | string[] | undefined>();
+    const deferred = new Deferred<containerDesktopAPI.Uri | string | string[] | undefined>();
 
     // store the dialogID
-    openSaveDialogResponses.set(`${dialogId}`, (result: string | string[] | undefined) => {
+    openSaveDialogResponses.set(`${dialogId}`, (result: containerDesktopAPI.Uri | string | string[] | undefined) => {
       deferred.resolve(result);
     });
 
@@ -1349,7 +1351,7 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld(
     'saveDialog',
-    async (options?: containerDesktopAPI.SaveDialogOptions): Promise<string | undefined> => {
+    async (options?: containerDesktopAPI.SaveDialogOptions): Promise<containerDesktopAPI.Uri | undefined> => {
       const handle = deferedHandleDialog();
 
       // ask to open file dialog
@@ -1358,7 +1360,7 @@ export function initExposure(): void {
       });
 
       // wait for response
-      return handle.deferred.promise as Promise<string | undefined>;
+      return handle.deferred.promise as Promise<containerDesktopAPI.Uri | undefined>;
     },
   );
 
@@ -1688,21 +1690,6 @@ export function initExposure(): void {
     return ipcInvoke('kubernetes-client:listIngresses');
   });
 
-  contextBridge.exposeInMainWorld(
-    'kubernetesStartInformer',
-    async (resourcesType: KubernetesInformerResourcesType): Promise<number> => {
-      return ipcInvoke('kubernetes-client:startInformer', resourcesType);
-    },
-  );
-
-  contextBridge.exposeInMainWorld('kubernetesRefreshInformer', async (id: number): Promise<void> => {
-    return ipcInvoke('kubernetes-client:refreshInformer', id);
-  });
-
-  contextBridge.exposeInMainWorld('kubernetesStopInformer', async (id: number): Promise<void> => {
-    return ipcInvoke('kubernetes-informer-registry:stopInformer', id);
-  });
-
   contextBridge.exposeInMainWorld('kubernetesListRoutes', async (): Promise<V1Route[]> => {
     return ipcInvoke('kubernetes-client:listRoutes');
   });
@@ -1757,6 +1744,55 @@ export function initExposure(): void {
       return ipcInvoke('kubernetes-client:createResourcesFromFile', context, file, namespace);
     },
   );
+
+  // callbacks for shellInContainer
+  let kubernetesCallbackId = 0;
+  const kubernetesCallbackMap = new Map<
+    number,
+    { onStdOut: (data: Buffer) => void; onStdErr: (data: Buffer) => void; onClose: () => void }
+  >();
+  contextBridge.exposeInMainWorld(
+    'kubernetesExec',
+    async (
+      podName: string,
+      containerName: string,
+      onStdOut: (data: Buffer) => void,
+      onStdErr: (data: Buffer) => void,
+      onClose: () => void,
+    ): Promise<number> => {
+      kubernetesCallbackId++;
+      kubernetesCallbackMap.set(kubernetesCallbackId, { onStdOut, onStdErr, onClose });
+      return ipcInvoke('kubernetes-client:execIntoContainer', podName, containerName, kubernetesCallbackId);
+    },
+  );
+
+  contextBridge.exposeInMainWorld('kubernetesExecSend', async (dataId: number, content: string): Promise<void> => {
+    return ipcInvoke('kubernetes-client:execIntoContainerSend', dataId, content);
+  });
+
+  contextBridge.exposeInMainWorld('kubernetesExecResize', async (dataId: number, width: number, height: number) => {
+    return ipcInvoke('kubernetes-client:execIntoContainerResize', dataId, width, height);
+  });
+
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onData', (_, kubernetesCallbackId: number, data: Buffer) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onStdOut(data);
+    }
+  });
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onError', (_, kubernetesCallbackId: number, data: Buffer) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onStdErr(data);
+    }
+  });
+  ipcRenderer.on('kubernetes-client:execIntoContainer-onClose', (_, kubernetesCallbackId: number) => {
+    const callback = kubernetesCallbackMap.get(kubernetesCallbackId);
+    if (callback) {
+      callback.onClose();
+      onDataCallbacksShellInContainer.delete(kubernetesCallbackId);
+    }
+  });
 
   contextBridge.exposeInMainWorld('restartKubernetesPod', async (name: string): Promise<void> => {
     return ipcInvoke('kubernetes-client:restartPod', name);

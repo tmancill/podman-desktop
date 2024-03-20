@@ -79,7 +79,6 @@ import type { IconInfo } from './api/icon-info.js';
 import type { ImageCheckerInfo } from './api/image-checker-info.js';
 import type { ImageInfo } from './api/image-info.js';
 import type { ImageInspectInfo } from './api/image-inspect-info.js';
-import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
 import type { NetworkInspectInfo } from './api/network-info.js';
 import type { NotificationCard, NotificationCardOptions } from './api/notification.js';
 import type { OnboardingInfo, OnboardingStatus } from './api/onboarding.js';
@@ -136,7 +135,6 @@ import { ExtensionInstaller } from './install/extension-installer.js';
 import { KubernetesClient } from './kubernetes-client.js';
 import type { KubeContext } from './kubernetes-context.js';
 import type { ContextGeneralState, ResourceName } from './kubernetes-context-state.js';
-import { KubernetesInformerManager } from './kubernetes-informer-registry.js';
 import { downloadGuideList } from './learning-center/learning-center.js';
 import type { MessageBoxOptions, MessageBoxReturnValue } from './message-box.js';
 import { MessageBox } from './message-box.js';
@@ -450,14 +448,7 @@ export class PluginSystem {
     const fileSystemMonitoring = new FilesystemMonitoring();
     const customPickRegistry = new CustomPickRegistry(apiSender);
     const onboardingRegistry = new OnboardingRegistry(configurationRegistry, context);
-    const kubernetesInformerRegistry = new KubernetesInformerManager();
-    const kubernetesClient = new KubernetesClient(
-      apiSender,
-      configurationRegistry,
-      fileSystemMonitoring,
-      kubernetesInformerRegistry,
-      telemetry,
-    );
+    const kubernetesClient = new KubernetesClient(apiSender, configurationRegistry, fileSystemMonitoring, telemetry);
     await kubernetesClient.init();
     const closeBehaviorConfiguration = new CloseBehavior(configurationRegistry);
     await closeBehaviorConfiguration.init();
@@ -626,6 +617,7 @@ export class PluginSystem {
       webviewRegistry,
       colorRegistry,
       dialogRegistry,
+      safeStorageRegistry,
     );
     await this.extensionLoader.init();
 
@@ -1756,21 +1748,6 @@ export class PluginSystem {
       return kubernetesClient.listIngresses();
     });
 
-    this.ipcHandle(
-      'kubernetes-client:startInformer',
-      async (_listener, resourcesType: KubernetesInformerResourcesType): Promise<number> => {
-        return kubernetesClient.startInformer(resourcesType);
-      },
-    );
-
-    this.ipcHandle('kubernetes-client:refreshInformer', async (_listener, id: number): Promise<void> => {
-      return kubernetesClient.refreshInformer(id);
-    });
-
-    this.ipcHandle('kubernetes-informer-registry:stopInformer', async (_listener, id: number): Promise<void> => {
-      return kubernetesInformerRegistry.stopInformer(id);
-    });
-
     this.ipcHandle('kubernetes-client:listRoutes', async (): Promise<V1Route[]> => {
       return kubernetesClient.listRoutes();
     });
@@ -1947,6 +1924,53 @@ export class PluginSystem {
       },
     );
 
+    const kubernetesExecCallbackMap = new Map<
+      number,
+      { onStdIn: (data: string) => void; onResize: (columns: number, rows: number) => void }
+    >();
+    this.ipcHandle(
+      'kubernetes-client:execIntoContainer',
+      async (_listener, podName: string, containerName: string, onDataId: number): Promise<number> => {
+        const execInvocation = await kubernetesClient.execIntoContainer(
+          podName,
+          containerName,
+          (stdOut: Buffer) => {
+            this.getWebContentsSender().send('kubernetes-client:execIntoContainer-onData', onDataId, stdOut);
+          },
+          (stdErr: Buffer) => {
+            this.getWebContentsSender().send('kubernetes-client:execIntoContainer-onError', onDataId, stdErr);
+          },
+          () => {
+            this.getWebContentsSender().send('kubernetes-client:execIntoContainer-onClose', onDataId);
+            kubernetesExecCallbackMap.delete(onDataId);
+          },
+        );
+        kubernetesExecCallbackMap.set(onDataId, execInvocation);
+
+        return onDataId;
+      },
+    );
+
+    this.ipcHandle(
+      'kubernetes-client:execIntoContainerSend',
+      async (_listener, onDataId: number, content: string): Promise<void> => {
+        const callback = kubernetesExecCallbackMap.get(onDataId);
+        if (callback) {
+          callback.onStdIn(content);
+        }
+      },
+    );
+
+    this.ipcHandle(
+      'kubernetes-client:execIntoContainerResize',
+      async (_listener, onDataId: number, width: number, height: number): Promise<void> => {
+        const callback = kubernetesExecCallbackMap.get(onDataId);
+        if (callback) {
+          callback.onResize(width, height);
+        }
+      },
+    );
+
     this.ipcHandle('feedback:send', async (_listener, feedbackProperties: unknown): Promise<void> => {
       return telemetry.sendFeedback(feedbackProperties);
     });
@@ -1985,6 +2009,10 @@ export class PluginSystem {
 
     this.ipcHandle('colorRegistry:listColors', async (_listener, themeId: string): Promise<ColorInfo[]> => {
       return colorRegistry.listColors(themeId);
+    });
+
+    this.ipcHandle('colorRegistry:isDarkTheme', async (_listener, themeId: string): Promise<boolean> => {
+      return colorRegistry.isDarkTheme(themeId);
     });
 
     this.ipcHandle('viewRegistry:listViewsContributions', async (_listener): Promise<ViewInfoUI[]> => {
@@ -2124,10 +2152,12 @@ export class PluginSystem {
     );
     this.ipcHandle(
       'dialog:saveDialog',
-      async (_listener, dialogId: string, options: containerDesktopAPI.SaveDialogOptions): Promise<void> => {
-        dialogRegistry.saveDialog(options, dialogId).catch((error: unknown) => {
-          console.error('Error opening dialog', error);
-        });
+      async (
+        _listener,
+        dialogId: string,
+        options: containerDesktopAPI.SaveDialogOptions,
+      ): Promise<containerDesktopAPI.Uri | undefined> => {
+        return dialogRegistry.saveDialog(options, dialogId);
       },
     );
     this.ipcHandle(

@@ -18,7 +18,6 @@
 
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
-import type { IncomingMessage } from 'node:http';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -26,9 +25,7 @@ import { PassThrough } from 'node:stream';
 import type {
   Cluster,
   Context,
-  KubernetesListObject,
   KubernetesObject,
-  ListPromise,
   V1APIGroup,
   V1APIResource,
   V1ConfigMap,
@@ -40,17 +37,18 @@ import type {
   V1Pod,
   V1PodList,
   V1Service,
+  V1Status,
 } from '@kubernetes/client-node';
 import {
   ApisApi,
   AppsV1Api,
   CoreV1Api,
   CustomObjectsApi,
+  Exec,
   HttpError,
   KubeConfig,
   KubernetesObjectApi,
   Log,
-  makeInformer,
   NetworkingV1Api,
   V1DeleteOptions,
   VersionApi,
@@ -63,7 +61,6 @@ import { parseAllDocuments } from 'yaml';
 import type { Telemetry } from '/@/plugin/telemetry/telemetry.js';
 
 import type { ApiSenderType } from './api.js';
-import type { KubernetesInformerResourcesType } from './api/kubernetes-informer-info.js';
 import type { V1Route } from './api/openshift-types.js';
 import type { PodInfo } from './api/pod-info.js';
 import type { ConfigurationRegistry, IConfigurationNode } from './configuration-registry.js';
@@ -72,7 +69,7 @@ import type { FilesystemMonitoring } from './filesystem-monitoring.js';
 import type { KubeContext } from './kubernetes-context.js';
 import type { ContextGeneralState, ResourceName } from './kubernetes-context-state.js';
 import { ContextsManager } from './kubernetes-context-state.js';
-import type { KubernetesInformerManager } from './kubernetes-informer-registry.js';
+import { BufferedStreamWriter, ResizableTerminalWriter, StringLineReader } from './kubernetes-exec-transmitter.js';
 import { Uri } from './types/uri.js';
 
 interface KubernetesObjectWithKind extends KubernetesObject {
@@ -164,7 +161,6 @@ export class KubernetesClient {
     private readonly apiSender: ApiSenderType,
     private readonly configurationRegistry: ConfigurationRegistry,
     private readonly fileSystemMonitoring: FilesystemMonitoring,
-    private readonly informerManager: KubernetesInformerManager,
     private readonly telemetry: Telemetry,
   ) {
     this.kubeConfig = new KubeConfig();
@@ -1361,143 +1357,6 @@ export class KubernetesClient {
     }
   }
 
-  async createDeploymentsInformer(id?: number): Promise<number> {
-    const ns = this.getCurrentNamespace();
-    if (ns) {
-      const k8sAppsApi = this.kubeConfig.makeApiClient(AppsV1Api);
-      return this.makeKubernetesInformer<V1Deployment>(
-        'DEPLOYMENT',
-        '/apis/apps/v1/namespaces/' + ns + '/deployments',
-        () => k8sAppsApi.listNamespacedDeployment(ns),
-        id,
-      );
-    }
-    throw new Error('no active namespace');
-  }
-
-  async createIngressesInformer(id?: number): Promise<number> {
-    const ns = this.getCurrentNamespace();
-    if (ns) {
-      const k8sNetworkingApi = this.kubeConfig.makeApiClient(NetworkingV1Api);
-      return this.makeKubernetesInformer<V1Ingress>(
-        'INGRESS',
-        '/apis/networking.k8s.io/v1/namespaces/' + ns + '/ingresses',
-        () => k8sNetworkingApi.listNamespacedIngress(ns),
-        id,
-      );
-    }
-    throw new Error('no active namespace');
-  }
-
-  async createRoutesInformer(id?: number): Promise<number> {
-    const ns = this.getCurrentNamespace();
-    if (ns) {
-      const customObjectsApi = this.kubeConfig.makeApiClient(CustomObjectsApi);
-      return this.makeKubernetesInformer<V1Route>(
-        'ROUTE',
-        '/apis/route.openshift.io/v1/namespaces/' + ns + '/routes',
-        () =>
-          customObjectsApi.listNamespacedCustomObject('route.openshift.io', 'v1', ns, 'routes') as Promise<{
-            response: IncomingMessage;
-            body: KubernetesListObject<V1Route>;
-          }>,
-        id,
-      );
-    }
-    throw new Error('no active namespace');
-  }
-
-  async createServicesInformer(id?: number): Promise<number> {
-    const ns = this.getCurrentNamespace();
-    if (ns) {
-      const k8sApi = this.kubeConfig.makeApiClient(CoreV1Api);
-      return this.makeKubernetesInformer<V1Service>(
-        'SERVICE',
-        '/api/v1/namespaces/' + ns + '/services',
-        () => k8sApi.listNamespacedService(ns),
-        id,
-      );
-    }
-    throw new Error('no active namespace');
-  }
-
-  async startInformer(resourcesType: KubernetesInformerResourcesType, id?: number): Promise<number> {
-    switch (resourcesType) {
-      case 'DEPLOYMENT': {
-        return this.createDeploymentsInformer(id);
-      }
-      case 'INGRESS': {
-        return this.createIngressesInformer(id);
-      }
-      case 'ROUTE': {
-        return this.createRoutesInformer(id);
-      }
-      case 'SERVICE': {
-        return this.createServicesInformer(id);
-      }
-    }
-  }
-
-  async makeKubernetesInformer<T extends KubernetesObject>(
-    resourcesType: KubernetesInformerResourcesType,
-    path: string,
-    listPromiseFn: ListPromise<T>,
-    id?: number,
-  ): Promise<number> {
-    const currentContext = this.kubeConfig.getContextObject(this.kubeConfig.currentContext);
-    if (currentContext) {
-      // set up the informer
-      try {
-        const informer = makeInformer<T>(this.kubeConfig, path, listPromiseFn);
-        informer.on('add', resource => {
-          this.apiSender.send(`kubernetes-${resourcesType.toLowerCase()}-add`, resource);
-        });
-        informer.on('update', resource => {
-          this.apiSender.send(`kubernetes-${resourcesType.toLowerCase()}-update`, resource);
-        });
-        informer.on('delete', resource => {
-          this.apiSender.send(`kubernetes-${resourcesType.toLowerCase()}-deleted`, resource);
-        });
-        informer.on('error', _resource => {
-          this.apiSender.send('kubernetes-error');
-          // Restart informer after 5sec
-          setTimeout(() => {
-            informer.start().catch((e: unknown) => console.error(e));
-          }, 5000);
-        });
-        informer.on('connect', _resource => {
-          this.apiSender.send('kubernetes-connect');
-        });
-        // if id is defined, we are refreshing an informer so we have to update its entry in the registry
-        if (id) {
-          this.apiSender.send('kubernetes-informer-refresh', id);
-          this.informerManager.updateInformer(id, informer, currentContext);
-        } else {
-          // else we are creating a new informer and add it to the registry
-          id = this.informerManager.addInformer(informer, currentContext, resourcesType);
-        }
-        // start informer
-        await informer.start();
-        // return its id
-        return id;
-      } catch (_) {
-        // do nothing
-      }
-    }
-
-    throw new Error('error when setting the informer');
-  }
-
-  async refreshInformer(id: number): Promise<void> {
-    const currentContext = this.kubeConfig.getContextObject(this.kubeConfig.currentContext);
-    const informerInfo = this.informerManager.getInformerInfo(id);
-    // if context changed after we started the informer, we recreate it with the new context
-    if (informerInfo && JSON.stringify(informerInfo.context) !== JSON.stringify(currentContext)) {
-      await informerInfo.informer.stop();
-      await this.startInformer(informerInfo.resourcesType, id);
-    }
-  }
-
   public getContextsGeneralState(): Map<string, ContextGeneralState> {
     return this.contextsState.getContextsGeneralState();
   }
@@ -1516,5 +1375,71 @@ export class KubernetesClient {
 
   public dispose(): void {
     this.contextsState.dispose();
+  }
+
+  async execIntoContainer(
+    podName: string,
+    containerName: string,
+    onStdOut: (data: Buffer) => void,
+    onStdErr: (data: Buffer) => void,
+    onClose: () => void,
+  ): Promise<{ onStdIn: (data: string) => void; onResize: (columns: number, rows: number) => void }> {
+    let telemetryOptions = {};
+    try {
+      const ns = this.getCurrentNamespace();
+      const connected = await this.checkConnection();
+      if (!ns) {
+        throw new Error('no active namespace');
+      }
+      if (!connected) {
+        throw new Error('not active connection');
+      }
+
+      const stdout = new ResizableTerminalWriter(new BufferedStreamWriter(onStdOut));
+      const stderr = new ResizableTerminalWriter(new BufferedStreamWriter(onStdErr));
+      const stdin = new StringLineReader();
+
+      const exec = new Exec(this.kubeConfig);
+      const conn = await exec.exec(
+        ns,
+        podName,
+        containerName,
+        ['/bin/sh', '-c', 'if command -v bash >/dev/null 2>&1; then bash; else sh; fi'],
+        stdout,
+        stderr,
+        stdin,
+        true,
+        (_: V1Status) => {
+          // need to think, maybe it would be better to pass exit code to the client, but on the other hand
+          // if connection is idle for 15 minutes, websocket connection closes automatically and this handler
+          // does not call. also need to separate SIGTERM signal (143) and normally exit signals to be able to
+          // proper reconnect client terminal. at this moment we ignore status and rely on websocket close event
+        },
+      );
+
+      //need to handle websocket idling, which causes the connection close which is not passed to the execution status
+      //approx time for idling before closing socket is 15 minutes. code and reason are always undefined here.
+      conn.on('close', () => {
+        onClose();
+      });
+
+      return {
+        onStdIn: (data: string): void => {
+          stdin.readLine(data);
+        },
+        onResize: (columns: number, rows: number): void => {
+          if (columns <= 0 || rows <= 0 || isNaN(columns) || isNaN(rows) || columns === Infinity || rows === Infinity) {
+            throw new Error('resizing must be done using positive cols and rows');
+          }
+
+          (stdout as ResizableTerminalWriter).resize({ width: columns, height: rows });
+        },
+      };
+    } catch (error) {
+      telemetryOptions = { error: error };
+      throw this.wrapK8sClientError(error);
+    } finally {
+      this.telemetry.track('kubernetesExecIntoContainer', telemetryOptions);
+    }
   }
 }

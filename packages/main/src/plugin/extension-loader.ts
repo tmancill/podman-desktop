@@ -64,6 +64,7 @@ import { ProgressLocation } from './progress-impl.js';
 import type { ProviderRegistry } from './provider-registry.js';
 import type { Proxy } from './proxy.js';
 import { createHttpPatchedModules } from './proxy-resolver.js';
+import { type SafeStorageRegistry } from './safe-storage/safe-storage-registry.js';
 import {
   StatusBarAlignLeft,
   StatusBarAlignRight,
@@ -179,6 +180,7 @@ export class ExtensionLoader {
     private webviewRegistry: WebviewRegistry,
     private colorRegistry: ColorRegistry,
     private dialogRegistry: DialogRegistry,
+    private safeStorageRegistry: SafeStorageRegistry,
   ) {
     this.pluginsDirectory = directories.getPluginsDirectory();
     this.pluginsScanDirectory = directories.getPluginsScanDirectory();
@@ -910,10 +912,7 @@ export class ExtensionLoader {
       showSaveDialog: async (
         options?: containerDesktopAPI.SaveDialogOptions,
       ): Promise<containerDesktopAPI.Uri | undefined> => {
-        const result = await dialogRegistry.saveDialog(options);
-        if (result) {
-          return Uri.file(result);
-        }
+        return dialogRegistry.saveDialog(options);
       },
     };
 
@@ -1337,10 +1336,13 @@ export class ExtensionLoader {
       await fs.promises.rename(oldStoragePath, storagePath);
     }
 
+    const secrets = this.safeStorageRegistry.getExtensionStorage(extension.id);
+
     const extensionContext: containerDesktopAPI.ExtensionContext = {
       subscriptions,
       storagePath,
       extensionUri,
+      secrets,
     };
     let deactivateFunction = undefined;
     if (typeof extensionMain?.['deactivate'] === 'function') {

@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**********************************************************************
  * Copyright (C) 2024 Red Hat, Inc.
  *
@@ -17,14 +16,30 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { PodmanDownload } from './podman-download';
+import type { Uri as APIUri } from '@podman-desktop/api';
+import { afterEach, expect, test, vi } from 'vitest';
 
-import * as podman4JSON from '../src/podman4.json';
-import * as podman5JSON from '../src/podman5.json';
+import { Uri } from './Uri.js';
 
-const podman4Download = new PodmanDownload(podman4JSON, true);
-podman4Download.downloadBinaries();
+afterEach(() => {
+  vi.resetAllMocks();
+  vi.clearAllMocks();
+});
 
-// do not fetch for airgap mode now
-const podman5Download = new PodmanDownload(podman5JSON, false);
-podman5Download.downloadBinaries();
+test('Expect revive to return revived Uri object', () => {
+  const uriSerialized = {
+    _scheme: 'scheme',
+    _authority: 'authority',
+    _path: 'path',
+    _query: 'query',
+    _fragment: 'fragment',
+  } as unknown as APIUri;
+
+  const revived = Uri.revive(uriSerialized);
+  expect(revived.authority).equals('authority');
+  expect(revived.scheme).equals('scheme');
+  expect(revived.path).equals('path');
+  expect(revived.fsPath).equals('path');
+  expect(revived.query).equals('query');
+  expect(revived.fragment).equals('fragment');
+});

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2023-2024 Red Hat, Inc.
+ * Copyright (C) 2024 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,6 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import type { TestContext } from 'vitest';
+import { writable } from 'svelte/store';
 
-import type { PodmanDesktopRunner } from '../runner/podman-desktop-runner';
-
-export interface RunnerTestContext extends TestContext {
-  // to avoid compilation failures -> error TS2339: Property 'task' does not exist on type 'TestContext'.
-  // task: any;
-  pdRunner: PodmanDesktopRunner;
-}
+export const terminalStates = writable(new Map());
